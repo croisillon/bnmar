@@ -7,18 +7,29 @@ use Net::Packet::Dump;
 use Net::Packet::Consts qw(:dump);
 use Socket;
 use Data::Dumper;
+use Devel::Peek;
 
 $|=1;
-
-
 
 use constant {
 	NET_MASK => unpack('N', Socket::inet_aton("255.255.255.0")),
 	LAN_NET  => unpack('N', Socket::inet_aton("192.168.2.0")),
 };
 
-my $cache = {};
-my $it;
+my $cache = { 
+	aton => {},
+	dns => {}
+};
+my ($it);
+
+BEGIN {
+
+	# Открываем файл с преобразованными в числа IP адреса доменов (ТОП 50) 
+	open (TABLE, '<', 'domains.digits.table') or die $!;
+	while (<TABLE>) { $cache->{'dns'}->{$_} = 1; }
+	close TABLE;
+
+}
 
 # Adress to Number
 sub aton {
@@ -34,19 +45,11 @@ sub compare {
 	return ((&aton($_[0]) & NET_MASK) == LAN_NET);
 }
 
-# Открываем файл с преобразованными в числа IP адреса доменов (ТОП 50) 
-open my $fh, '<', 'domains.digits.table';
-my @table =  <$fh>;
-close $fh;
 
 # Ищет адрес в ТОП 100
 sub find {
-	return undef unless $_[0];
-	
-	# Ищет в ТОП 100 заданный адрес
-	for $it (@table) { 
-		($it == &aton($_[0])) && return 1; 
-	}
+	return 1 if ($cache->{'dns'}->{ &aton($_[0]) });
+	return 0;
 }
 
 
