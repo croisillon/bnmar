@@ -12,83 +12,56 @@ select STDOUT;
 $|=1;
 
 use constant {
-    NET_MASK => unpack('N', Socket::inet_aton("255.255.255.0")),
-    NET_ADDR  => unpack('N', Socket::inet_aton("192.168.2.0")),
-    PCAP_IN  => "netdump.pcap",
-    PCAP_OUT => 'filtered.pcap',
-    TEMP_FILE_EXT => '.dat',
-    TEMP_FILE_TEMPLATE => 'PPFilterXXXXXXX',
-    TEMP_FILE_DIR => 'tmp',
+	NET_MASK => unpack('N', Socket::inet_aton("255.255.255.0")),
+	NET_ADDR  => unpack('N', Socket::inet_aton("192.168.2.0")),
+	PCAP_IN  => "netdump.pcap",
+	PCAP_OUT => 'filtered.pcap',
+	TEMP_FILE_EXT => '.pcap',
+	TEMP_FILE_DIR => '/tmp',
 };
 
-my ($cache, %sessions, %journal);
+use constant VERBOSE => 0;
 
-$cache = {
-	aton => {},
-	dns => {}
-};
+my (%cache, %sessions, %journal);
 
 BEGIN {
 
 	# Открываем файл с преобразованными в числа IP адреса доменов (ТОП 100) 
 	open (TABLE, '<', 'domains.digits.table') or die $!;
-	while (<TABLE>) { $cache->{'dns'}->{$_} = 1; }
+	while (<TABLE>) { $cache{$_} = 1; }
 	close TABLE;
 
 }
 
-sub tmp_fh {
-	my $fh = shift;
-
-	return close $fh if ref $fh eq "GLOB";
-
-	return tempfile (
-			DIR 		=> TEMP_FILE_DIR,
-			TEMPLATE 	=> TEMP_FILE_TEMPLATE,
-			SUFFIX 		=> TEMP_FILE_EXT,
-			UNLINK 		=> 0,
-		);
-}
-
-sub set_structure {
-	return { 
-				'FH' 	=> undef, 
-				'FN' 	=> undef, 
-				'BEGIN' => undef,
-				'ND' 	=> undef, 
-				'HDR' 	=> undef 
-			};
-}
-
 sub main {
-    my ($pcap, $packet, $errbuf, %header, $p, $pcap_dump);
+	my ($pcap, $packet, $errbuf, %header, $p, $pcap_dump);
+	my ($src, $dst, $key, $flags);
 
-    $pcap = pcap_open_offline(PCAP_IN, \$errbuf) or die ("error reading pcap file: $errbuf");
-    
-    $pcap_dump = Net::Pcap::dump_open($pcap, PCAP_OUT);
-    unlink glob TEMP_FILE_DIR."/*".TEMP_FILE_EXT;
+	$pcap = pcap_open_offline(PCAP_IN, \$errbuf) or die ("error reading pcap file: $errbuf");
+	
+	$pcap_dump = Net::Pcap::dump_open($pcap, PCAP_OUT);
 
-    my ($src, $dst, $key, $flags);
-    while ( $packet = pcap_next($pcap, \%header) ) {
-    	$src = $dst = $key = $flags = undef;
+	print "Start parsing file ".PCAP_IN."\n";
+	while ( $packet = pcap_next($pcap, \%header) ) {
 
-        $p = &PP::parse_packet($packet, \%header);
+		$p = &PP::parse_packet($packet, \%header);
 
-       	# Only IPv4 
-        next unless $p->{'eth'}->{'type'} == ETH_TYPE_IP;
+		# Only IPv4 
+		next unless $p->{'eth'}->{'type'} == ETH_TYPE_IP;
 
-        # Only TCP
-        next unless $p->{'ip'}->{'proto'} == IP_PROTO_TCP;
+		# Only TCP
+		next unless $p->{'ip'}->{'proto'} == IP_PROTO_TCP;
 
-        ($src, $dst) = (&compare($p->{'ip'}->{'src'}), &compare($p->{'ip'}->{'dst'}));
-        
-        # Если адрес источника и приемника это локальная сеть
+		$src = &compare($p->{'ip'}->{'src'});
+		$dst = &compare($p->{'ip'}->{'dst'});
+		
+		# If the source and destination address is a local area network
 		next if ( $src && $dst );
 
-		# Если запрос не принадлежит ни к одной исследуемой сети
+		# If the request does not belong to any study network
 		next if ( !$src && !$dst );
 
-		# Источник не из домашней сети, а получатель в домашней сети
+		# The source is not from the home network and the receiver in the home network
 		if ( !$src && $dst ) {
 			# Поменять адреса местами для будущего ключа
 			($src, $dst) = @{$p->{'ip'}}{qw/dst src/};
@@ -96,105 +69,81 @@ sub main {
 			($src, $dst) = @{$p->{'ip'}}{qw/src dst/};
 		}
 
-		next if $cache->{'dns'}->{ $dst } ? 1 : 0;
+		# Search address in the list of top 100
+		next if defined $cache{ $dst };
 
-		# Socket::inet_ntoa(pack("N", $number))
 		# IP.src_IP.dst
 		$key = $src.'_'.$dst;
 
-		unless ( exists $journal{$key} ) {
-			$journal{$key} = &set_structure();
+		# Create a new temporary file [ip.src_ip.dst.pcap]
+		unless (ref $journal{$key}->{'FH'} eq ref $pcap_dump) {
+
+			# Filename
+			$journal{$key}->{'FN'} = TEMP_FILE_DIR.'/'.$key.TEMP_FILE_EXT;
+
+			# Filehandle
+			$journal{$key}->{'FH'} = Net::Pcap::dump_open($pcap,$journal{$key}->{'FN'});
 		}
 
-		# Create a new temporary file
-		unless (ref $journal{$key}->{'FH'} eq 'GLOB') {
-			($journal{$key}->{'FH'}, $journal{$key}->{'FN'}) = &tmp_fh();
-		}
-
-		unless (ref $journal{$key}->{'HDR'} eq 'ARRAY') {
-			$journal{$key}->{'HDR'} = [];
-		}
-
-		syswrite $journal{$key}->{'FH'}, "#START".$packet."FINISH#\n";
-		push @{$journal{$key}->{'HDR'}}, \%header;
+		# Recording package to a temporary file
+		Net::Pcap::pcap_dump($journal{$key}->{'FH'}, \%header, $packet);
+		Net::Pcap::pcap_dump_flush($journal{$key}->{'FH'});
 
 		$flags = $p->{'tcp'}->{'flags'};
 
 		# SYN or ACK, SYN
 		# Начало сессии
-		if ( $flags == 0x002 || $flags == 0x012 ) {
-
+		if ( $flags == TCP_FLAG_SYN || $flags == (TCP_FLAG_ACK + TCP_FLAG_SYN) ) {
 
 			# Если по уже имеющимся данным у нас есть открытая сессия в журнале
-        	if ( $journal{$key}->{'BEGIN'} && $journal{$key}->{'END'} ) {
-        		my ($buf);
+			if ( $journal{$key}->{'BEGIN'} && $journal{$key}->{'END'} ) {
 
-				open FH, "<", $journal{$key}->{'FN'};
+				print "Moving the session $key in the main file \n" if VERBOSE;
+				Net::Pcap::dump_close($journal{$key}->{'FH'});
 
-				$buf = '';
-				while ( <FH> ) {
-					$buf .= $_;
-					if ( m/^#START/ ) {
-						$buf =~ s/#START//;
-					}
-					if ( m/FINISH#/ ) {
-						$buf =~ s/FINISH#\n//;
-						Net::Pcap::pcap_dump($pcap_dump, shift @{$journal{$key}->{'HDR'}}, $buf);
-						Net::Pcap::pcap_dump_flush($pcap_dump);
-						$buf = '';
-					}
-				}
+				&save($journal{$key}->{'FN'}, $pcap_dump);
 
-				close FH;
-				close $journal{$key}->{'FH'};
 				undef $journal{$key};
-				$journal{$key} = &set_structure();
-        	}
+			}
 
-	        # Регистрируем в журнале для этой сессии начало
-	        $journal{$key}->{'BEGIN'} = 1;
-		}
+			# Регистрируем в журнале для этой сессии начало
+			$journal{$key}->{'BEGIN'} = 1;
+		} # .if
 
 		# ACK, FIN or FIN, PSH, ACK
 		# Завершение сессии
-		if ( $flags == 0x011 || $flags == 0x019 ) {
+		if ( $flags == (TCP_FLAG_FIN + TCP_FLAG_ACK) || $flags == (TCP_FLAG_PSH + TCP_FLAG_FIN + TCP_FLAG_ACK) ) {
 			$journal{$key}->{'END'} = 1;
 		}
 
 		undef %header;
-		undef $packet;
-    } # .while
+		$src = $dst = $key = $flags = $packet = undef;
+	} # .while
+	print "Parsing has been completed\n";
 
-    print "Clear journal \n";
+	print "Clear journal \n";
 	my @keys = keys %journal;
 
 	for $key ( @keys ) {
-    	if ( $journal{$key}->{'BEGIN'} && $journal{$key}->{'END'} ) {
-    		my ($buf);
+			if ( $journal{$key}->{'BEGIN'} && $journal{$key}->{'END'} ) {
 
-			open FTMP, "<", $journal{$key}->{'FN'};
+				print "Moving the session $key in the main file \n" if VERBOSE;
+				Net::Pcap::dump_close($journal{$key}->{'FH'});
 
-			$buf = '';
-			while ( <FTMP> ) {
-				$buf .= $_;
-				if ( m/^#START/ ) {
-					$buf =~ s/#START//;
-				}
-				if ( m/FINISH#/ ) {
-					$buf =~ s/FINISH#\n//;
-					Net::Pcap::pcap_dump($pcap_dump, shift @{$journal{$key}->{'HDR'}}, $buf);
-					Net::Pcap::pcap_dump_flush($pcap_dump);
-					$buf = '';
-				}
+				&save($journal{$key}->{'FN'}, $pcap_dump);
+
+				undef $journal{$key};
 			}
-
-			close FTMP;
-			close $journal{$key}->{'FH'};
-			undef $journal{$key};
-			delete $journal{$key};
-    	}
 	}
+
 	Net::Pcap::dump_close($pcap_dump);
+	Net::Pcap::pcap_close($pcap);
+
+	# Garbage collection
+	print "Garbage collection\n";
+	unlink glob TEMP_FILE_DIR."/*".TEMP_FILE_EXT;
+
+	sleep(2);
 }
 
 # Проверяет адрес принадлежности сети
@@ -203,9 +152,26 @@ sub compare {
 	return (($_[0] & NET_MASK) == NET_ADDR);
 }
 
-# Ищет адрес в ТОП 100
-sub find {
-	return $cache->{'dns'}->{ $_[0] } ? 1 : 0;
+sub save {
+	my $fn = shift;   # $journal{$key}->{'FN'}
+	my $dump = shift; # $pcap_dump
+
+	my $i = 0;
+
+	my ($pcap, $errbuf, $packet, %header);
+
+	$pcap = pcap_open_offline($fn, \$errbuf);
+
+	while ( $packet = pcap_next($pcap, \%header) ) {
+		++$i;
+		Net::Pcap::pcap_dump($dump, \%header, $packet);
+		Net::Pcap::pcap_dump_flush($dump);
+	}
+	print "Recorded in the main file packages -> $i \n" if VERBOSE;
+
+	Net::Pcap::pcap_close($pcap);
+
+	return 0;
 }
 
 &main();
