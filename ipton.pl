@@ -5,9 +5,27 @@ use warnings;
 use Socket;
 $|=1;
 
-open my $domain, '<', 'domains.table';
+use constant IN => 'domains.table';
+use constant OUT => 'domains.digits.table';
 
-open my $table, '>', 'domains.digits.table';
+=encoding utf8
+
+=head1 NAME
+
+IP address to Number
+
+=head1 SYNOPSIS
+
+Преобразует ip-адреса в числа
+
+=head1 AUTHOR
+
+Denis Lavrov C<diolavr@gmail.com>
+
+=cut
+
+open my $domain, '<', IN;
+open my $table, '>', OUT;
 
 for (<$domain>) {
 	if ($_ =~ m/^#/) { next; }
@@ -19,3 +37,4 @@ for (<$domain>) {
 close ($domain);
 close ($table);
 
+__END__
