@@ -14,8 +14,8 @@ $|=1;
 use constant {
 	NET_MASK => unpack('N', Socket::inet_aton("255.255.255.0")),
 	NET_ADDR  => unpack('N', Socket::inet_aton("192.168.2.0")),
-	PCAP_IN  => "netdump.pcap",
-	PCAP_OUT => 'filtered.pcap',
+	PCAP_IN  => '/media/denis/WD50/con/dm/netdump.pcap',
+	PCAP_OUT => '/media/denis/WD50/con/dm/filtered.pcap',
 	TEMP_FILE_EXT => '.pcap',
 	TEMP_FILE_DIR => '/tmp',
 };
@@ -26,7 +26,8 @@ my (%cache, %sessions, %journal);
 
 BEGIN {
 
-	# Открываем файл с преобразованными в числа IP адреса доменов (ТОП 100) 
+	# Open the file with the converted number in the IP address of the domain (TOP 100)
+	# http://www.similarweb.com/country/russian_federation
 	open (TABLE, '<', 'domains.digits.table') or die $!;
 	while (<TABLE>) { $cache{$_} = 1; }
 	close TABLE;
@@ -34,19 +35,20 @@ BEGIN {
 }
 
 sub main {
-	my ($pcap, $packet, $errbuf, %header, $p, $pcap_dump);
+	my ($pcap, $packet, $errbuf, %header, $p, $pcap_dump, $i);
 	my ($src_ip, $dst_ip, $key, $flags, $src_port, $dst_port);
 
-	$pcap = pcap_open_offline(PCAP_IN, \$errbuf) or die ("error reading pcap file: $errbuf");
+	$pcap = Net::Pcap::pcap_open_offline(PCAP_IN, \$errbuf) or die ("error reading pcap file: $errbuf");
 	
-	$pcap_dump = Net::Pcap::dump_open($pcap, PCAP_OUT);
+	$pcap_dump = Net::Pcap::pcap_dump_open($pcap, PCAP_OUT);
 
 	print "Start parsing file ".PCAP_IN."\n";
-	while ( $packet = pcap_next($pcap, \%header) ) {
+	while ( $packet = Net::Pcap::pcap_next($pcap, \%header) ) {
+		++$i;
 
 		$p = &PP::parse_packet($packet, \%header);
 
-		# Only IPv4 
+		# Only IPv4
 		next unless $p->{'eth'}->{'type'} == ETH_TYPE_IP;
 
 		# Only TCP
@@ -63,7 +65,7 @@ sub main {
 
 		# The source is not from the home network and the receiver in the home network
 		if ( !$src_ip && $dst_ip ) {
-			# Поменять адреса местами для будущего ключа
+			# To change address locations for future key
 			($src_ip, $dst_ip) = @{$p->{'ip'}}{qw/dst src/};
 			($src_port, $dst_port) = @{$p->{'tcp'}}{qw/dst_port src_port/};
 		} else {
@@ -77,45 +79,64 @@ sub main {
 		# IP.src_IP.dst
 		$key = $src_ip.$dst_ip.$src_port.$dst_port;
 
-		# Create a new temporary file [ip.src_ip.dst.pcap]
-		unless (ref $journal{$key}->{'FH'} eq ref $pcap_dump) {
-
-			# Filename
-			$journal{$key}->{'FN'} = TEMP_FILE_DIR.'/'.$key.TEMP_FILE_EXT;
-
-			# Filehandle
-			$journal{$key}->{'FH'} = Net::Pcap::dump_open($pcap,$journal{$key}->{'FN'});
-		}
-
-		# Recording package to a temporary file
-		Net::Pcap::pcap_dump($journal{$key}->{'FH'}, \%header, $packet);
-		Net::Pcap::pcap_dump_flush($journal{$key}->{'FH'});
-
 		$flags = $p->{'tcp'}->{'flags'};
 
-		# SYN or ACK, SYN
-		# Начало сессии
-		if ( $flags == TCP_FLAG_SYN || $flags == (TCP_FLAG_ACK + TCP_FLAG_SYN) ) {
+		if ( $flags == TCP_FLAG_SYN ) {
+			$journal{$key}->{'SYN'} = 1;
+			$journal{$key}->{'FIN'} = 0;
+			$journal{$key}->{'ACK'} = 0;
+		}
 
-			# Если по уже имеющимся данным у нас есть открытая сессия в журнале
-			if ( $journal{$key}->{'BEGIN'} && $journal{$key}->{'END'} ) {
+		# SYN
+		# Request to start session
+		# Now we can create a file and write to all packages
+		# https://tools.ietf.org/html/rfc793#page-30
+		if ( defined $journal{$key}->{'SYN'} ) {
 
-				print "Moving the session $key in the main file \n" if VERBOSE;
-				Net::Pcap::dump_close($journal{$key}->{'FH'});
+			# Create a new temporary file [ip.src_ip.dst.pcap]
+			unless (ref $journal{$key}->{'FH'} eq ref $pcap_dump) {
 
-				&move_to($journal{$key}->{'FN'}, $pcap_dump);
+				# Filename
+				$journal{$key}->{'FN'} = TEMP_FILE_DIR.'/'.$key.TEMP_FILE_EXT;
 
-				undef $journal{$key};
+				# Filehandle
+				$journal{$key}->{'FH'} = Net::Pcap::pcap_dump_open($pcap, $journal{$key}->{'FN'});
 			}
 
-			# Регистрируем в журнале для этой сессии начало
-			$journal{$key}->{'BEGIN'} = 1;
-		} # .if
+			# Recording package to a temporary file
+			Net::Pcap::pcap_dump($journal{$key}->{'FH'}, \%header, $packet);
+			Net::Pcap::pcap_dump_flush($journal{$key}->{'FH'});
 
-		# ACK, FIN or FIN, PSH, ACK
-		# Завершение сессии
-		if ( $flags == (TCP_FLAG_FIN + TCP_FLAG_ACK) || $flags == (TCP_FLAG_PSH + TCP_FLAG_FIN + TCP_FLAG_ACK) ) {
-			$journal{$key}->{'END'} = 1;
+			# ACK, SYN
+			# https://tools.ietf.org/html/rfc793#page-30
+			$journal{$key}->{'SYN'} = 2 if $flags == (TCP_FLAG_ACK + TCP_FLAG_SYN);
+
+			# ACK, FIN or FIN, PSH, ACK
+			# https://tools.ietf.org/html/rfc793#page-39
+			if ( $flags == (TCP_FLAG_FIN + TCP_FLAG_ACK) || $flags == (TCP_FLAG_PSH + TCP_FLAG_FIN + TCP_FLAG_ACK) ) {
+				$journal{$key}->{'FIN'} = 1 if !$journal{$key}->{'FIN'};
+				$journal{$key}->{'FIN'} = 2 if $journal{$key}->{'FIN'} == 1;
+			}
+
+			# Collect the remaining packages
+			# Closure type compounds 1,2
+			# https://tools.ietf.org/html/rfc793#page-39
+			if ( $journal{$key}->{'FIN'} > 0 ) {
+				++$journal{$key}->{'ACK'};
+			}
+
+		} else {
+			delete $journal{$key};
+		}
+
+		if ( defined $journal{$key}->{'SYN'} ) {
+
+			$flags = $journal{$key}->{'SYN'} + $journal{$key}->{'FIN'} + $journal{$key}->{'ACK'};
+
+			if ( $flags == 6 ) {
+				# A floating dump in the main file
+				&save($journal{$key}, $pcap_dump);
+			}
 		}
 
 		undef %header;
@@ -123,22 +144,7 @@ sub main {
 	} # .while
 	print "Parsing has been completed\n";
 
-	print "Clear journal \n";
-	my @keys = keys %journal;
-
-	for $key ( @keys ) {
-			if ( $journal{$key}->{'BEGIN'} && $journal{$key}->{'END'} ) {
-
-				print "Moving the session $key in the main file \n" if VERBOSE;
-				Net::Pcap::dump_close($journal{$key}->{'FH'});
-
-				&move_to($journal{$key}->{'FN'}, $pcap_dump);
-
-				undef $journal{$key};
-			}
-	}
-
-	Net::Pcap::dump_close($pcap_dump);
+	Net::Pcap::pcap_dump_close($pcap_dump);
 	Net::Pcap::pcap_close($pcap);
 
 	# Garbage collection
@@ -148,10 +154,26 @@ sub main {
 	sleep(2);
 }
 
-# Проверяет адрес принадлежности сети
+# Checks the address of the belonging network
 sub compare {
 	return undef unless $_[0]; 
 	return (($_[0] & NET_MASK) == NET_ADDR);
+}
+
+sub save {
+	my $journal = shift;
+	my $pcap_dump = shift;
+
+	Net::Pcap::pcap_dump_close($journal->{'FH'});
+	$journal->{'FH'} = undef;
+
+	&move_to($journal->{'FN'}, $pcap_dump);
+	$journal->{'FN'} = undef;
+	unlink glob $journal{$key}->{'FN'};
+
+	$journal{$key} = undef;
+
+	return 0;
 }
 
 sub move_to {
@@ -162,9 +184,9 @@ sub move_to {
 
 	my ($pcap, $errbuf, $packet, %header);
 
-	$pcap = pcap_open_offline($fn, \$errbuf);
+	$pcap = Net::Pcap::pcap_open_offline($fn, \$errbuf);
 
-	while ( $packet = pcap_next($pcap, \%header) ) {
+	while ( $packet = Net::Pcap::pcap_next($pcap, \%header) ) {
 		++$i;
 		Net::Pcap::pcap_dump($dump, \%header, $packet);
 		Net::Pcap::pcap_dump_flush($dump);
