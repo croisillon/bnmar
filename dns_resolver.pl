@@ -4,11 +4,11 @@ use warnings;
 use strict;
 use Net::DNS;
 
-$|=1;
+$| = 1;
 
-my ($resolver, $reply);
+my ( $resolver, $reply );
 
-use constant IN => 'domains.txt';
+use constant IN  => 'domains.txt';
 use constant OUT => 'domains.table';
 
 =encoding utf8
@@ -43,51 +43,48 @@ Denis Lavrov C<diolavr@gmail.com>
 
 =cut
 
-$resolver = Net::DNS::Resolver->new(
-	nameservers => ['8.8.8.8', '8.8.4.4']
-);
+$resolver
+    = Net::DNS::Resolver->new( nameservers => [ '8.8.8.8', '8.8.4.4' ] );
 
 sub resolv {
-	my ($rslvr, $domain) = @_;
-	my $reply = $rslvr->search($domain);
+    my ( $rslvr, $domain ) = @_;
+    my $reply = $rslvr->search($domain);
 
-	return undef unless $reply;
+    return undef unless $reply;
 
-	my $addrs = [];
-	foreach my $record ( $reply->answer ) {
-		next unless $record->type eq "A";
-		push @$addrs, $record->address;
-	}
-	return $addrs;
+    my $addrs = [];
+    foreach my $record ( $reply->answer ) {
+        next unless $record->type eq "A";
+        push @$addrs, $record->address;
+    }
+    return $addrs;
 }
 
+open( my $domains, '<', IN )
+    or die "cannot open file: $!";
 
-
-open (my $domains, '<', IN) 
-	or die "cannot open file: $!";
-
-open (my $n_domains, '>', OUT)
-	or die "cannot open file: $!";
+open( my $n_domains, '>', OUT )
+    or die "cannot open file: $!";
 
 print "Processed...\n";
 for (<$domains>) {
-	chomp;
+    chomp;
 
-	next unless defined $_;
+    next unless defined $_;
 
-	# Отправляем запрос DNS серверам
-	$reply = &resolv($resolver, $_);
+    # Отправляем запрос DNS серверам
+    $reply = &resolv( $resolver, $_ );
 
-	next unless $reply;
+    next unless $reply;
 
-	# Сохраняем IP адрес
-	# В таблицу IP адресов попадают домены с адресами, которые удалось получить
-	print $n_domains '#'. $_ ."\n". (join ",", @$reply) ."\n"; 
+# Сохраняем IP адрес
+# В таблицу IP адресов попадают домены с адресами, которые удалось получить
+    print $n_domains '#' . $_ . "\n" . ( join ",", @$reply ) . "\n";
 }
 print "Done...\n";
 
-close ($n_domains);
+close($n_domains);
 
-close ($domains);
+close($domains);
 
 __END__
