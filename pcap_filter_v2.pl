@@ -14,8 +14,8 @@ $|=1;
 use constant {
 	NET_MASK => unpack('N', Socket::inet_aton("255.255.255.0")),
 	NET_ADDR  => unpack('N', Socket::inet_aton("192.168.2.0")),
-	PCAP_IN  => '/media/denis/WD50/con/dm/netdump.pcap',
-	PCAP_OUT => '/media/denis/WD50/con/dm/filtered.pcap',
+	PCAP_IN  => 'netdump.pcap',
+	PCAP_OUT => 'filtered.pcap',
 	TEMP_FILE_EXT => '.pcap',
 	TEMP_FILE_DIR => '/tmp',
 };
