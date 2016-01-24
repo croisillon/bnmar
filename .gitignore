@@ -1,3 +1,4 @@
 *.pcap
 *.swp
 reports
+*.csv
