@@ -101,8 +101,7 @@ sub main {
             unless ( ref $journal{$key}->{'FH'} eq ref $pcap_dump ) {
 
                 # Filename
-                $journal{$key}->{'FN'}
-                    = TEMP_FILE_DIR . '/' . $key . TEMP_FILE_EXT;
+                $journal{$key}->{'FN'} = &file_path($key);
 
                 # Filehandle
                 $journal{$key}->{'FH'} = Net::Pcap::pcap_dump_open( $pcap,
@@ -137,7 +136,9 @@ sub main {
 
         }
         else {
+            undef $journal{$key};
             delete $journal{$key};
+
         }
 
         if ( defined $journal{$key}->{'SYN'} ) {
@@ -164,7 +165,7 @@ sub main {
 
     # Garbage collection
     print "Garbage collection\n";
-    unlink glob TEMP_FILE_DIR . "/*" . TEMP_FILE_EXT;
+    unlink glob &file_path('*');
 
     sleep(2);
 }
@@ -173,6 +174,10 @@ sub main {
 sub compare {
     return undef unless $_[0];
     return ( ( $_[0] & NET_MASK ) == NET_ADDR );
+}
+
+sub file_path {
+    return TEMP_FILE_DIR . "/" . (shift) . TEMP_FILE_EXT;
 }
 
 sub save {
