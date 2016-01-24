@@ -6,6 +6,7 @@ use Net::Pcap;
 use Data::Dumper;
 use Time::Piece ':override';
 use Time::Seconds;
+use common::sense;
 use PP;
 
 select STDOUT;
@@ -41,10 +42,8 @@ sub main {
 
         # Запись в журнал
         unless ( exists $journal{ $t->epoch } ) {
-            $journal{ $t->epoch } = {
-                t   => $t->epoch,
-                fph => 0
-            };
+            say $t->epoch;
+            $journal{ $t->epoch } = { t => $t->epoch };
         }
 
         # Делаем уникальный ключ
@@ -56,37 +55,30 @@ sub main {
 
 # При начале сессии инициализируем переменные
         if ( $flags == TCP_FLAG_SYN ) {
-            ++$journal{ $t->epoch }->{'fph'};
             $journal{$key} = {};
 
             $journal{$key}->{'SYN'} = 1;
             $journal{$key}->{'FIN'} = 0;
             $journal{$key}->{'ACK'} = 0;
-            $journal{$key}->{'bytes'}->{'out'}   ||= 0;
-            $journal{$key}->{'bytes'}->{'in'}    ||= 0;
-            $journal{$key}->{'packets'}->{'out'} ||= 0;
-            $journal{$key}->{'packets'}->{'in'}  ||= 0;
-            $journal{$key}->{'timer'}->{'start'}
-                = ( localtime $header{'tv_sec'} )->epoch;
-            $journal{$key}->{'src'} = $p->{'ip'}->{'src'};
-            $journal{$key}->{'dst'} = $p->{'ip'}->{'dst'};
-            $syn_ip                 = $p->{'ip'}->{'src'};
+
+            $journal{$key}->{'bytes'} ||= 0;
+            $journal{$key}->{'ppf'}   ||= 0;
+
+            $journal{$key}->{'time'} = ( localtime $header{'tv_sec'} )->epoch;
+            $journal{$key}->{'src'}->{'ip'}   = $p->{'ip'}->{'src'};
+            $journal{$key}->{'dst'}->{'ip'}   = $p->{'ip'}->{'dst'};
+            $journal{$key}->{'src'}->{'port'} = $p->{'tcp'}->{'src_port'};
+            $journal{$key}->{'dst'}->{'port'} = $p->{'tcp'}->{'dst_port'};
         }
 
         # SYN
         if ( defined $journal{$key}->{'SYN'} ) {
 
-            if ( $p->{'ip'}->{'src'} eq $syn_ip ) {
+            # Количество байт в потоке
+            $journal{$key}->{'bytes'} += $p->{'ip'}->{'len'};
 
-          # Количество переданных байт LAN -> INTERNET
-                $journal{$key}->{'bytes'}->{'out'} += $p->{'ip'}->{'len'};
-                ++$journal{$key}->{'packets'}->{'out'};
-            }
-            else {
-              # Количество принятых байт INTERNET -> LAN
-                $journal{$key}->{'bytes'}->{'in'} += $p->{'ip'}->{'len'};
-                ++$journal{$key}->{'packets'}->{'in'};
-            }
+            # Количество пакетов в потоке
+            $journal{$key}->{'ppf'} += 1;
 
             # ACK, SYN
             $journal{$key}->{'SYN'} = 2
@@ -114,53 +106,42 @@ sub main {
 
             if ( $flags == 6 ) {
 
-             # Сохраняем время последнего пакета
-                $journal{$key}->{'timer'}->{'end'}
-                    += ( localtime $header{'tv_sec'} )->epoch;
+                $journal{$key}->{'time'}
+                    = ( localtime $header{'tv_sec'} )->epoch
+                    - $journal{$key}->{'time'};
 
-                # Количество пакетов в потоке
-                $journal{ $t->epoch }->{'ppf'}
-                    += $journal{$key}->{'packets'}->{'out'}
-                    + $journal{$key}->{'packets'}->{'in'};
-
-                # Количество байт в потоке
-                $bytes = $journal{$key}->{'bytes'}->{'out'}
-                    + $journal{$key}->{'bytes'}->{'in'};
+                $journal{$key}->{'time'} ||= 1;
 
                 # Среднее число байт в пакетах
-                $journal{ $t->epoch }->{'bpp'}
-                    += $bytes / $journal{ $t->epoch }->{'ppf'};
-
-# Интервал времени за который прошел весь поток (в сек)
-                $sec
-                    = (   $journal{$key}->{'timer'}->{'end'}
-                        - $journal{$key}->{'timer'}->{'start'} )
-                    || 1;
+                $journal{$key}->{'bpp'}
+                    = $journal{$key}->{'bytes'} / $journal{$key}->{'ppf'};
 
               # Среднее количество байт в секунду
-                $journal{ $t->epoch }->{'bps'} += $bytes / $sec;
+                $journal{$key}->{'bps'}
+                    = $journal{$key}->{'bytes'} / $journal{$key}->{'time'};
 
-                # Запишем в отчет
-                open my $fh, '>>', &report_path( $t->epoch );
+                open( my $fh, '>>', &report_path(01) );
 
          # Если отчет пустой, добавим заголовок
-                if ( -z &report_path( $t->epoch ) ) {
+                if ( -z &report_path(01) ) {
                     print $fh "\""
                         . (
                         join "\", \"",
-                        qw/src_ip dst_ip ppf bytes_out bytes_in duration/
+                        qw/time src_ip src_port dst_ip dst_port ppf bpp bps/
                         ) . "\"\n";
                 }
 
                 print $fh "\""
                     . (
                     join( "\", \"",
-                        $journal{$key}->{'src'},
-                        $journal{$key}->{'dst'},
-                        $journal{ $t->epoch }->{'ppf'},
-                        $journal{$key}->{'bytes'}->{'out'},
-                        $journal{$key}->{'bytes'}->{'in'},
-                        $sec )
+                        $t->hms,
+                        &PP::toDotQuad( $journal{$key}->{'src'}->{'ip'} ),
+                        $journal{$key}->{'src'}->{'port'},
+                        &PP::toDotQuad( $journal{$key}->{'dst'}->{'ip'} ),
+                        $journal{$key}->{'dst'}->{'port'},
+                        $journal{$key}->{'ppf'},
+                        sprintf( "%.2f", $journal{$key}->{'bpp'} ),
+                        sprintf( "%.2f", $journal{$key}->{'bps'} ) )
                     ) . "\"\n";
                 close $fh;
 
