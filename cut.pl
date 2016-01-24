@@ -19,7 +19,7 @@ use constant REPORT_CLEAN => 1;
 sub main {
     my ( $pcap, $packet, $errbuf, %header, $p );
 
-    # Убрать старые отчеты перед началом работы
+# Убрать старые отчеты перед началом работы
     unlink glob &report_path('*') if REPORT_CLEAN;
 
     # Открываем pcap для создания отчета
@@ -54,7 +54,7 @@ sub main {
 
         $flags = $p->{'tcp'}->{'flags'};
 
-        # При начале сессии инициализируем переменные
+# При начале сессии инициализируем переменные
         if ( $flags == TCP_FLAG_SYN ) {
             ++$journal{ $t->epoch }->{'fph'};
             $journal{$key} = {};
@@ -77,12 +77,13 @@ sub main {
         if ( defined $journal{$key}->{'SYN'} ) {
 
             if ( $p->{'ip'}->{'src'} eq $syn_ip ) {
-                # Количество переданных байт LAN -> INTERNET
+
+          # Количество переданных байт LAN -> INTERNET
                 $journal{$key}->{'bytes'}->{'out'} += $p->{'ip'}->{'len'};
                 ++$journal{$key}->{'packets'}->{'out'};
             }
             else {
-                # Количество принятых байт INTERNET -> LAN
+              # Количество принятых байт INTERNET -> LAN
                 $journal{$key}->{'bytes'}->{'in'} += $p->{'ip'}->{'len'};
                 ++$journal{$key}->{'packets'}->{'in'};
             }
@@ -113,7 +114,7 @@ sub main {
 
             if ( $flags == 6 ) {
 
-            	# Сохраняем время последнего пакета
+             # Сохраняем время последнего пакета
                 $journal{$key}->{'timer'}->{'end'}
                     += ( localtime $header{'tv_sec'} )->epoch;
 
@@ -130,19 +131,19 @@ sub main {
                 $journal{ $t->epoch }->{'bpp'}
                     += $bytes / $journal{ $t->epoch }->{'ppf'};
 
-                # Интервал времени за который прошел весь поток (в сек)
+# Интервал времени за который прошел весь поток (в сек)
                 $sec
                     = (   $journal{$key}->{'timer'}->{'end'}
                         - $journal{$key}->{'timer'}->{'start'} )
                     || 1;
 
-                # Среднее количество байт в секунду
+              # Среднее количество байт в секунду
                 $journal{ $t->epoch }->{'bps'} += $bytes / $sec;
 
                 # Запишем в отчет
                 open my $fh, '>>', &report_path( $t->epoch );
 
-                # Если отчет пустой, добавим заголовок
+         # Если отчет пустой, добавим заголовок
                 if ( -z &report_path( $t->epoch ) ) {
                     print $fh "\""
                         . (
