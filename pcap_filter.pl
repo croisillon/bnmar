@@ -3,200 +3,222 @@
 use warnings;
 use strict;
 use Net::Pcap;
-use Net::Packet::Dump;
-use Net::Packet::Consts qw(:dump);
-use Socket;
+use Socket qw(inet_aton);
 use Data::Dumper;
-use Devel::Peek;
+use File::Temp qw/ tempfile tempdir /;
+use PP;
 
-$|=1;
+select STDOUT;
+$| = 1;
 
 use constant {
-	NET_MASK => unpack('N', Socket::inet_aton("255.255.255.0")),
-	LAN_NET  => unpack('N', Socket::inet_aton("192.168.2.0")),
+    NET_MASK      => unpack( 'N', Socket::inet_aton("255.255.255.0") ),
+    NET_ADDR      => unpack( 'N', Socket::inet_aton("192.168.2.0") ),
+    PCAP_IN       => 'netdump.pcap',
+    PCAP_OUT      => 'filtered.pcap',
+    TEMP_FILE_EXT => '.pcap',
+    TEMP_FILE_DIR => '/tmp',
 };
 
-my $cache = { 
-	aton => {},
-	dns => {}
-};
-my ($it);
+use constant VERBOSE => 0;
+
+my ( %cache, %sessions, %journal );
 
 BEGIN {
 
-	# Открываем файл с преобразованными в числа IP адреса доменов (ТОП 50) 
-	open (TABLE, '<', 'domains.digits.table') or die $!;
-	while (<TABLE>) { $cache->{'dns'}->{$_} = 1; }
-	close TABLE;
+# Open the file with the converted number in the IP address of the domain (TOP 100)
+# http://www.similarweb.com/country/russian_federation
+    open( TABLE, '<', 'domains.digits.table' ) or die $!;
+    while (<TABLE>) { $cache{$_} = 1; }
+    close TABLE;
 
 }
 
-# Adress to Number
-sub aton {
-	# N - An unsigned long (32-bit) in "network" (big-endian) order
-	return $cache->{'aton'}->{$_[0]} if defined $cache->{'aton'}->{$_[0]};
-	return $cache->{'aton'}->{$_[0]} = unpack 'N', Socket::inet_aton($_[0]);
+sub main {
+    my ( $pcap, $packet, $errbuf, %header, $p, $pcap_dump, $i );
+    my ( $src_ip, $dst_ip, $key, $flags, $src_port, $dst_port );
+
+    $pcap = Net::Pcap::pcap_open_offline( PCAP_IN, \$errbuf )
+        or die("error reading pcap file: $errbuf");
+
+    $pcap_dump = Net::Pcap::pcap_dump_open( $pcap, PCAP_OUT );
+
+    print "Start parsing file " . PCAP_IN . "\n";
+    while ( $packet = Net::Pcap::pcap_next( $pcap, \%header ) ) {
+        ++$i;
+
+        $p = &PP::parse_packet( $packet, \%header );
+
+        # Only IPv4
+        next unless $p->{'eth'}->{'type'} == ETH_TYPE_IP;
+
+        # Only TCP
+        next unless $p->{'ip'}->{'proto'} == IP_PROTO_TCP;
+
+        $src_ip = &compare( $p->{'ip'}->{'src'} );
+        $dst_ip = &compare( $p->{'ip'}->{'dst'} );
+
+        # If the source and destination address is a local area network
+        next if ( $src_ip && $dst_ip );
+
+        # If the request does not belong to any study network
+        next if ( !$src_ip && !$dst_ip );
+
+# The source is not from the home network and the receiver in the home network
+        if ( !$src_ip && $dst_ip ) {
+
+            # To change address locations for future key
+            ( $src_ip, $dst_ip ) = @{ $p->{'ip'} }{qw/dst src/};
+            ( $src_port, $dst_port )
+                = @{ $p->{'tcp'} }{qw/dst_port src_port/};
+        }
+        else {
+            ( $src_ip, $dst_ip ) = @{ $p->{'ip'} }{qw/src dst/};
+            ( $src_port, $dst_port )
+                = @{ $p->{'tcp'} }{qw/src_port dst_port/};
+        }
+
+        # Search address in the list of top 100
+        next if defined $cache{$dst_ip};
+
+        $key = $src_ip . $dst_ip . $src_port . $dst_port;
+
+        $flags = $p->{'tcp'}->{'flags'};
+
+        if ( $flags == TCP_FLAG_SYN ) {
+            $journal{$key}->{'SYN'} = 1;
+            $journal{$key}->{'FIN'} = 0;
+            $journal{$key}->{'ACK'} = 0;
+        }
+
+        # SYN
+        # Request to start session
+        # Now we can create a file and write to all packages
+        # https://tools.ietf.org/html/rfc793#page-30
+        if ( defined $journal{$key}->{'SYN'} ) {
+
+            # Create a new temporary file
+            unless ( ref $journal{$key}->{'FH'} eq ref $pcap_dump ) {
+
+                # Filename
+                $journal{$key}->{'FN'} = &file_path($key);
+
+                # Filehandle
+                $journal{$key}->{'FH'} = Net::Pcap::pcap_dump_open( $pcap,
+                    $journal{$key}->{'FN'} );
+            }
+
+            # Recording package to a temporary file
+            Net::Pcap::pcap_dump( $journal{$key}->{'FH'}, \%header, $packet );
+            Net::Pcap::pcap_dump_flush( $journal{$key}->{'FH'} );
+
+            # ACK, SYN
+            # https://tools.ietf.org/html/rfc793#page-30
+            $journal{$key}->{'SYN'} = 2
+                if $flags == ( TCP_FLAG_ACK + TCP_FLAG_SYN );
+
+            # ACK, FIN or FIN, PSH, ACK
+            # https://tools.ietf.org/html/rfc793#page-39
+            if (   $flags == ( TCP_FLAG_FIN + TCP_FLAG_ACK )
+                || $flags == ( TCP_FLAG_PSH + TCP_FLAG_FIN + TCP_FLAG_ACK ) )
+            {
+                $journal{$key}->{'FIN'} = 1 if !$journal{$key}->{'FIN'};
+                $journal{$key}->{'FIN'} = 2 if $journal{$key}->{'FIN'} == 1;
+            }
+            elsif ( $journal{$key}->{'FIN'} > 0 ) {
+
+                # Collect the remaining packages
+                # Closure type compounds 1,2
+                # https://tools.ietf.org/html/rfc793#page-39
+
+                ++$journal{$key}->{'ACK'};
+            }
+
+        }
+        else {
+            undef $journal{$key};
+            delete $journal{$key};
+
+        }
+
+        if ( defined $journal{$key}->{'SYN'} ) {
+
+            $flags
+                = $journal{$key}->{'SYN'}
+                + $journal{$key}->{'FIN'}
+                + $journal{$key}->{'ACK'};
+
+            if ( $flags == 6 ) {
+
+                # A floating dump in the main file
+                &save( $journal{$key}, $pcap_dump );
+            }
+        }
+
+        undef %header;
+        $src_ip = $dst_ip = $key = $flags = $packet = undef;
+    }    # .while
+    print "Parsing has been completed\n";
+
+    Net::Pcap::pcap_dump_close($pcap_dump);
+    Net::Pcap::pcap_close($pcap);
+
+    # Garbage collection
+    print "Garbage collection\n";
+    unlink glob &file_path('*');
+
+    sleep(2);
 }
 
-# Проверяет адрес принадлежности сети
+# Checks the address of the belonging network
 sub compare {
-	return undef unless $_[0]; 
-	
-	return ((&aton($_[0]) & NET_MASK) == LAN_NET);
+    return undef unless $_[0];
+    return ( ( $_[0] & NET_MASK ) == NET_ADDR );
 }
 
-
-# Ищет адрес в ТОП 100
-sub find {
-	return 1 if ($cache->{'dns'}->{ &aton($_[0]) });
-	return 0;
+sub file_path {
+    return TEMP_FILE_DIR . "/" . (shift) . TEMP_FILE_EXT;
 }
 
-
-my $dump = Net::Packet::Dump->new(
-	mode => NP_DUMP_MODE_OFFLINE,
-	file => 'netdump.pcap',
-	unlinkOnClean => 0,
-);
-
-my $writer = Net::Packet::Dump->new(
-	mode      => NP_DUMP_MODE_WRITER,
-	file      => 'filtered.pcap',
-	overwrite => 1,
-	keepTimestamp => 1
-);
-
-$dump->start;
-$writer->start;
-
-my $sessions = {};
-my $journal = {};
-my ($key, $src, $dst);
-
-
-# Осуществляет запись сессий в файл
 sub save {
-	my $key = shift;
-	my $j = $journal->{$key};
+    my $journal   = shift;
+    my $pcap_dump = shift;
 
-	return undef unless defined $j;
+    Net::Pcap::pcap_dump_close( $journal->{'FH'} );
+    $journal->{'FH'} = undef;
 
-	# Если сессия имее начало и конец, это то что нам нужно
-	if ($j->{'BEGIN'} && $j->{'END'}) {
-		for (@{$sessions->{$key}}) { 
-			unless ($_) { next; } $writer->write($_); 
-		} 
-	}
-	
-	# Высвобождаем память 
-	$sessions->{$key} = undef;
-	$journal->{$key} = undef;
+    &move_to( $journal->{'FN'}, $pcap_dump );
+    $journal->{'FN'} = undef;
+    unlink glob $journal->{'FN'};
 
-	delete $sessions->{$key};
-	delete $journal->{$key};
+    $journal = undef;
 
-	return 1;	
+    return 0;
 }
 
+sub move_to {
+    my $fn   = shift;    # $journal{$key}->{'FN'}
+    my $dump = shift;    # $pcap_dump
 
-# Осуществляет ведение сессии
-sub session {
-	my $p = shift;
-	($src, $dst) = ($p->l3->src || undef, $p->l3->dst || undef);
-	
-	return undef unless (defined $src && defined $dst);
-	
-	# Источник не из домашней сети, а получатель в домашней сети
-	if ( !&compare($src) && &compare($dst) ) {
-		# IP layer. IP address
-		# Поменять адреса местами для формирования ключа
-		($src, $dst) = ($p->l3->dst, $p->l3->src);	
-	} else {
-		($src, $dst) = ($p->l3->src, $p->l3->dst);
-	}
+    my $i = 0;
 
-	# Адрес получателя совпадает с ТОП 50 посещаемых сайтов
-	return undef if (&find($dst));	
-	
-	$src =~ s/\.//g;
-	$dst =~ s/\.//g;
+    my ( $pcap, $errbuf, $packet, %header );
 
-	# IP.src_IP.dst
-	$key = $src.'_'.$dst;
-	
-	$sessions->{$key} = [] unless (ref $sessions->{$key} eq 'ARRAY');	
+    $pcap = Net::Pcap::pcap_open_offline( $fn, \$errbuf );
 
-	push @{$sessions->{$key}}, $p;
+    while ( $packet = Net::Pcap::pcap_next( $pcap, \%header ) ) {
+        ++$i;
+        Net::Pcap::pcap_dump( $dump, \%header, $packet );
+        Net::Pcap::pcap_dump_flush($dump);
+    }
+    print "Recorded in the main file packages -> $i \n" if VERBOSE;
 
-	# SYN or ACK, SYN
-	if ($p->l4->flags == 0x002 || $p->l4->flags == 0x012 ) {
-		if (defined $journal->{$key}->{'END'}) {
-			&save($key);
-			$sessions->{$key} = [];
-		}
+    Net::Pcap::pcap_close($pcap);
 
-		# Регистрируем в журнале для этой сессии начало
-		$journal->{$key}->{'BEGIN'} = 1;
-
-		return 1; 
-	}
-
-	# ACK, FIN or FIN, PSH, ACK
-	if ($p->l4->flags == 0x011 || $p->l4->flags == 0x019) {
-		$journal->{$key}->{'END'} = 1;
-#		&save($key);
-	}
-
-	return 1;
+    return 0;
 }
 
-sub clearJournal {
-	my @keys = keys %$journal;
-	for $key (@keys) {
-		&save($key);
-	}
-}
-
-my ($packet);
-my $i = 1;
-
-print "Processed...\n";
-while (1) {
-	$packet = $dump->next;
-	unless ($packet) {
-		print "Clearng the journal... \n";
-		&clearJournal();
-		print "The journal has been cleared \n";
-		last;
-	}
-
-	# Only IPv4	
-	next unless $packet->l2->type == 0x0800;
-	# Only TCP
-	next unless $packet->l3->protocol == 0x06;
-
-	# Если адрес источника и приемника это локальная сеть
-	next if ( &compare($packet->l3->src) && &compare($packet->l3->dst) );
-
-	# Если запрос не принадлежит ни к одной исследуемой сети
-	next if ( !&compare($packet->l3->src) && !&compare($packet->l3->dst) );
-	
-	# Формируем сессию
-	&session($packet);
-
-}
-
-print "Done... \n";
-
-$writer->stop;
-$dump->stop;
-
-$writer->clean;
-$dump->clean;
-
-END {
-	undef $sessions;
-}
+&main();
 
 __END__
 
