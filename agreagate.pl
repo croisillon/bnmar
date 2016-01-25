@@ -7,7 +7,6 @@ use Data::Dumper;
 use Time::Piece ':override';
 use Time::Seconds;
 use common::sense;
-use PP;
 
 select STDOUT;
 $| = 1;
@@ -22,7 +21,7 @@ unless ( scalar @ARGV ) {
 }
 
 my $FILE_IN = $args->{'--file'};
-my $FILE_OUT = $args->{'--out'} || (localtime)->epoch.'_vector.csv';
+my $FILE_OUT = $args->{'--out'} || '/tmp/'.(localtime(time)->hms).'_vector.csv';
 
 sub main {
     my ( %journal, $line, $key, %vars, $i, $fh, %keys, @keys );
@@ -39,9 +38,10 @@ sub main {
 
         # Убираем лишние знаки
         $line =~ s/\n$//;
-        $line =~ s/\"//g;
+        $line =~ s/^\"|\"$//g;
+        $line =~ s/\s*//g;
 
-        ( $t, $src, $srcp, $dst, $dstp, $ppf, $bpp, $bps ) = split ',', $line;
+        ( $t, $src, $srcp, $dst, $dstp, $ppf, $bpp, $bps ) = split /\",\"/, $line;
 
         # Ключ из ip_src + ip_dst + port_dst
         $key = $src . $dst . $dstp;
@@ -77,9 +77,8 @@ sub main {
     undef $fh;
 
     open $fh, '>', $FILE_OUT;
-    print $fh "\""
-        . ( join "\", \"", qw/src_ip dst_ip dst_port fph ppf bpp bps/ )
-        . "\"\n";
+    print $fh join ',', map { qq{"$_"} } qw/src_ip dst_ip dst_port fph ppf bpp bps/;
+    print $fh "\n";
 
     while ( $key = shift @keys ) {
 
@@ -98,9 +97,8 @@ sub main {
         $bps = join ',', @$bps;
         $fph = join ',', @$fph;
 
-        print $fh "\""
-            . ( join( "\", \"", $src, $dst, $dstp, $fph, $ppf, $bpp, $bps ) )
-            . "\"\n";
+        print $fh join ',', map { qq{"$_"} } ($src, $dst, $dstp, $fph, $ppf, $bpp, $bps);
+        print $fh "\n";
     }
     
     close $fh;
