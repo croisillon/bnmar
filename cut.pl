@@ -16,22 +16,24 @@ my $args = {@ARGV};
 
 unless ( scalar @ARGV ) {
     print "For example: \n";
-    print './cut.pl --file traffic.pcap --interval 2 --todir /home/user/agreagate';
+    print
+        './cut.pl --file traffic.pcap --interval 2 --todir /home/user/agreagate';
     print "\n";
     exit;
 }
 
-my $PCAP_IN       = $args->{'--file'}     || 'traffic.pcap';
-my $TIME_INTERVAL = $args->{'--interval'} || 1;
-my $FILE_DIR      = $args->{'--todir'}    || '/tmp';
-my $CLEAN         = 1;
+my $PCAP_IN       = $args->{'--file'}         || 'traffic.pcap';
+my $TIME_INTERVAL = $args->{'--interval'}     || 1;
+my $FILE_DIR      = $args->{'--todir'}        || '/tmp';
+my $CLEAN         = exists $args->{'--clean'} || 0;
 my $FILE_EXT      = '.csv';
 my $BLOCK_TIME    = 0;
+my $COUNT         = 0;
 
 sub main {
     my ( $pcap, $packet, $errbuf, %header, $p );
 
-    unlink glob &report_path('*') if $CLEAN;
+    unlink glob &get_path('*') if $CLEAN;
 
     $pcap = Net::Pcap::pcap_open_offline( $PCAP_IN, \$errbuf )
         or die("error reading pcap file: $errbuf");
@@ -45,6 +47,7 @@ sub main {
         $p = &PP::parse_packet( $packet, \%header );
 
         # Корректировка времени --
+        # TODO: Прибавлять время не основываясь на времени пакета
         $time{'packet'} = localtime $header{'tv_sec'};
         ( $sec, $min ) = localtime $time{'packet'};
         $sec += ONE_MINUTE * $min;
@@ -64,8 +67,20 @@ sub main {
                 $time{'finish'}
                     = $time{'start'} + ( ONE_HOUR * $TIME_INTERVAL );
 
-                print localtime(time)->hms. " - Set start interval: " . $time{'start'}->hms . "\n";
-                print localtime(time)->hms. " - Set finish interval: " . $time{'finish'}->hms . "\n";
+                $time{'timekey'}
+                    = $COUNT . '_'
+                    . $time{'start'}->hms . '-'
+                    . $time{'finish'}->hms . '-'
+                    . ( localtime(time) )->hms;
+
+                ++$COUNT;
+
+                print localtime(time)->hms
+                    . " - Set start interval: "
+                    . $time{'start'}->hms . "\n";
+                print localtime(time)->hms
+                    . " - Set finish interval: "
+                    . $time{'finish'}->hms . "\n";
             }
 
         }
@@ -152,15 +167,18 @@ sub main {
                 $journal{$key}->{'bps'} = $journal{$key}->{'bytes'}
                     / $journal{$key}->{'duration'};
 
-                open( my $fh, '>>', &report_path( $time{'start'}->epoch ) );
+                open( my $fh, '>>', &get_path( $time{'timekey'} ) );
 
                 # Добавим заголовок
-                if ( -z &report_path( $time{'start'}->epoch ) ) {
+                if ( -z &get_path( $time{'timekey'} ) ) {
                     print $fh join( ",",
                         qw/time src_ip src_port dst_ip dst_port ppf bpp bps/ )
                         . "\n";
                 }
 
+           # TODO: Сделать корректировку времени
+           # 	когда сессия началась в одном часу,
+           # 	а закончилась в другом
                 print $fh "\""
                     . (
                     join( "\", \"",
@@ -190,7 +208,7 @@ sub main {
     }
 }
 
-sub report_path {
+sub get_path {
     return $FILE_DIR . '/' . (shift) . $FILE_EXT;
 }
 
