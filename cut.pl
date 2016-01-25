@@ -64,8 +64,8 @@ sub main {
                 $time{'finish'}
                     = $time{'start'} + ( ONE_HOUR * $TIME_INTERVAL );
 
-                print "Set start interval: " . $time{'start'}->hms . "\n";
-                print "Set finish interval: " . $time{'finish'}->hms . "\n";
+                print localtime(time)->hms. " - Set start interval: " . $time{'start'}->hms . "\n";
+                print localtime(time)->hms. " - Set finish interval: " . $time{'finish'}->hms . "\n";
             }
 
         }
