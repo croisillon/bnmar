@@ -12,40 +12,63 @@ use PP;
 select STDOUT;
 $| = 1;
 
-use constant REPORT_EXT => '.csv';
-use constant REPORT_DIR => 'reports';
+my $args = {@ARGV};
+
+unless ( scalar @ARGV ) {
+    print "For example: \n";
+    print './agregate.pl --file traffic.csv --out vector.csv';
+    print "\n";
+    exit;
+}
+
+my $FILE_IN = $args->{'--file'};
+my $FILE_OUT = $args->{'--out'} || (localtime)->epoch.'_vector.csv';
 
 sub main {
-    my ( %journal, $line, $key, %vars, $i, $fh, @keys );
+    my ( %journal, $line, $key, %vars, $i, $fh, %keys, @keys );
 
-    open $fh, '<', '58262.csv';
+    open $fh, '<', $FILE_IN or die $!;
 
     my ( $t, $src, $srcp, $dst, $dstp, $ppf, $bpp, $bps );
 
     $i = 0;
     while ( $line = <$fh> ) {
+
+        # Отбрасываем заголовок
         if ( !$i ) { ++$i; next; }
+
+        # Убираем лишние знаки
         $line =~ s/\n$//;
         $line =~ s/\"//g;
 
         ( $t, $src, $srcp, $dst, $dstp, $ppf, $bpp, $bps ) = split ',', $line;
 
-        $key = $src . $srcp . $dst . $dstp;
-        push @keys, $key;
+        # Ключ из ip_src + ip_dst + port_dst
+        $key = $src . $dst . $dstp;
 
-        $journal{$key}->{'i'}
-            = $journal{$key}->{'i'} ? $journal{$key}->{'i'} : 0;
-        ++$journal{$key}->{'i'};
+        # Сохраняем ключ, если такого нет
+        unless ( defined $keys{$key} ) {
+            push @keys, $key;
+            $keys{$key} = 1;
+        }
 
+        # Сохраняем время как ключ
         $vars{$t} = 1 if $t;
 
-        $journal{$key}->{'t'}              = $t;
+        # Считаем пакеты
+        $journal{$key}->{'i'} ||= 0;
+        $journal{$key}->{'i'} += 1;
+
+        # Сохраняем данные
         $journal{$key}->{'data'}->{'src'}  = $src;
         $journal{$key}->{'data'}->{'dst'}  = $dst;
-        $journal{$key}->{'data'}->{'srcp'} = $srcp;
         $journal{$key}->{'data'}->{'dstp'} = $dstp;
 
-        $journal{$key}->{'data'}->{'t'}->{$t} = $journal{$key}->{'data'}->{'t'}->{$t} ? ++$journal{$key}->{'data'}->{'t'}->{$t} : 1;
+        $journal{$key}->{'data'}->{'t'}->{$t}
+            = $journal{$key}->{'data'}->{'t'}->{$t}
+            ? ++$journal{$key}->{'data'}->{'t'}->{$t}
+            : 1;
+
         push @{ $journal{$key}->{'data'}->{'ppf'} }, $ppf;
         push @{ $journal{$key}->{'data'}->{'bpp'} }, $bpp;
         push @{ $journal{$key}->{'data'}->{'bps'} }, $bps;
@@ -53,22 +76,21 @@ sub main {
     close $fh;
     undef $fh;
 
-    open $fh, '>', 'vectors.csv';
+    open $fh, '>', $FILE_OUT;
     print $fh "\""
-        . ( join "\", \"", qw/src_ip src_port dst_ip dst_port fph ppf bpp bps/ )
+        . ( join "\", \"", qw/src_ip dst_ip dst_port fph ppf bpp bps/ )
         . "\"\n";
 
     while ( $key = shift @keys ) {
-        ( $src, $srcp, $dst, $dstp )
-            = @{ $journal{$key}->{'data'} }{qw/src srcp dst dstp/};
-        ( $ppf, $bpp, $bps, $t )
-            = @{ $journal{$key}->{'data'} }{qw/ppf bpp bps t/};
 
-        my @k = sort keys %vars;
+        ( $src, $dst, $dstp, $ppf, $bpp, $bps, $t )
+            = @{ $journal{$key}->{'data'} }{qw/src dst dstp ppf bpp bps t/};
+
+        my @k   = sort keys %vars;
         my $fph = [];
         map {
             next unless $_;
-            push @$fph, ($t->{$_} || 0);
+            push @$fph, ( $t->{$_} || 0 );
         } @k;
 
         $ppf = join ',', @$ppf;
@@ -76,22 +98,17 @@ sub main {
         $bps = join ',', @$bps;
         $fph = join ',', @$fph;
 
-      print $fh "\""
-          . ( join( "\", \"", $src, $srcp, $dst, $dstp, $fph, $ppf, $bpp, $bps ) )
-          . "\"\n";
-
+        print $fh "\""
+            . ( join( "\", \"", $src, $dst, $dstp, $fph, $ppf, $bpp, $bps ) )
+            . "\"\n";
     }
-
+    
     close $fh;
     undef $fh;
 
 }
 
 &main();
-
-sub report_path {
-    return REPORT_DIR . '/' . (shift) . REPORT_EXT;
-}
 
 __END__
 
