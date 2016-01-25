@@ -6,6 +6,7 @@ use Net::Pcap;
 use Socket qw(inet_aton);
 use Data::Dumper;
 use File::Temp qw/ tempfile tempdir /;
+use Time::Piece ':override';
 use PP;
 
 select STDOUT;
@@ -35,17 +36,16 @@ BEGIN {
 }
 
 sub main {
-    my ( $pcap, $packet, $errbuf, %header, $p, $pcap_dump, $i );
+    my ( $pcap, $packet, $errbuf, %header, $p, $pcap_dump);
     my ( $src_ip, $dst_ip, $key, $flags, $src_port, $dst_port );
 
     $pcap = Net::Pcap::pcap_open_offline( PCAP_IN, \$errbuf )
         or die("error reading pcap file: $errbuf");
 
     $pcap_dump = Net::Pcap::pcap_dump_open( $pcap, PCAP_OUT );
-
-    print "Start parsing file " . PCAP_IN . "\n";
+	
+    print localtime(time)->hms." - Start parsing file " . PCAP_IN . "\n";
     while ( $packet = Net::Pcap::pcap_next( $pcap, \%header ) ) {
-        ++$i;
 
         $p = &PP::parse_packet( $packet, \%header );
 
@@ -158,7 +158,7 @@ sub main {
         undef %header;
         $src_ip = $dst_ip = $key = $flags = $packet = undef;
     }    # .while
-    print "Parsing has been completed\n";
+    print localtime(time)->hms . " - Parsing has been completed\n";
 
     Net::Pcap::pcap_dump_close($pcap_dump);
     Net::Pcap::pcap_close($pcap);
