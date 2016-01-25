@@ -12,73 +12,92 @@ use PP;
 select STDOUT;
 $| = 1;
 
-use constant PCAP_IN      => 'filtered.pcap';
-use constant REPORT_EXT   => '.csv';
-use constant REPORT_DIR   => 'reports';
-use constant REPORT_CLEAN => 1;
+my $args = {@ARGV};
+
+my $PCAP_IN       = $args->{'--file'}     || 'traffic.pcap';
+my $TIME_INTERVAL = $args->{'--interval'} || 1;
+my $FILE_DIR      = $args->{'--todir'}    || '/tmp';
+my $FILE_EXT      = '.csv';
+my $BLOCK_TIME    = 0;
 
 sub main {
     my ( $pcap, $packet, $errbuf, %header, $p );
-
-# Убрать старые отчеты перед началом работы
-    unlink glob &report_path('*') if REPORT_CLEAN;
-
-    # Открываем pcap для создания отчета
-    $pcap = Net::Pcap::pcap_open_offline( PCAP_IN, \$errbuf )
+    $pcap = Net::Pcap::pcap_open_offline( $PCAP_IN, \$errbuf )
         or die("error reading pcap file: $errbuf");
 
-    my ( %journal, $sec, $min, $flags, $bytes, $key, $syn_ip, $t );
+    my ( %time, $key, $flags, %journal, $i );
 
+    $i = 0;
     while ( $packet = Net::Pcap::pcap_next( $pcap, \%header ) ) {
+        ++$i;
 
         $p = &PP::parse_packet( $packet, \%header );
 
-        # Получаем время в пакете
-        # Преобразуем время на начало часа
-        ( $sec, $min ) = localtime $header{'tv_sec'};
+        # Корректировка времени --
+        $time{'packet'} = localtime $header{'tv_sec'};
 
-        $min *= ONE_MINUTE;
-        $t = localtime $header{'tv_sec'} - $min - $sec;
+        if ( !$BLOCK_TIME ) {
 
-        # Запись в журнал
-        unless ( exists $journal{ $t->epoch } ) {
-            say $t->epoch;
-            $journal{ $t->epoch } = { t => $t->epoch };
+            if (   ( ref $time{'finish'} ne 'Time::Piece' )
+                || ( $time{'packet'}->epoch >= $time{'finish'}->epoch ) )
+            {
+                ( $time{'sec'}, $time{'min'} ) = localtime $time{'packet'};
+
+                $time{'sec'} += ONE_MINUTE * $time{'min'};
+                $time{'start'} = $time{'packet'} - $time{'sec'};
+
+                $time{'finish'}
+                    = $time{'start'} + ( ONE_HOUR * $TIME_INTERVAL );
+            }
+
         }
 
-        # Делаем уникальный ключ
+        # -- Корректировка времени
+
         $key = 0;
         map { $key += $_; } @{ $p->{'ip'} }{qw/src dst/},
             @{ $p->{'tcp'} }{qw/dst_port src_port/};
 
         $flags = $p->{'tcp'}->{'flags'};
 
-# При начале сессии инициализируем переменные
         if ( $flags == TCP_FLAG_SYN ) {
+
+            # Блокируем изменение времени
+            # Пока сессия не будет закончена
+            ++$BLOCK_TIME;
+
             $journal{$key} = {};
 
+            map { $journal{$key}->{$_} = $p->{'ip'}->{$_}; } qw/src dst/;
+            map { $journal{$key}->{$_} = $p->{'tcp'}->{$_}; }
+                qw/dst_port src_port/;
+
             $journal{$key}->{'SYN'} = 1;
-            $journal{$key}->{'FIN'} = 0;
-            $journal{$key}->{'ACK'} = 0;
+            $journal{$key}->{'FIN'} ||= 0;
+            $journal{$key}->{'ACK'} ||= 0;
 
-            $journal{$key}->{'bytes'} ||= 0;
-            $journal{$key}->{'ppf'}   ||= 0;
-
-            $journal{$key}->{'time'} = ( localtime $header{'tv_sec'} )->epoch;
-            $journal{$key}->{'src'}->{'ip'}   = $p->{'ip'}->{'src'};
-            $journal{$key}->{'dst'}->{'ip'}   = $p->{'ip'}->{'dst'};
-            $journal{$key}->{'src'}->{'port'} = $p->{'tcp'}->{'src_port'};
-            $journal{$key}->{'dst'}->{'port'} = $p->{'tcp'}->{'dst_port'};
-        }
-
-        # SYN
-        if ( defined $journal{$key}->{'SYN'} ) {
+            # Время начала сессии
+            $journal{$key}->{'s_time'} = $time{'packet'};
 
             # Количество байт в потоке
-            $journal{$key}->{'bytes'} += $p->{'ip'}->{'len'};
+            $journal{$key}->{'bytes'} ||= 0;
 
-            # Количество пакетов в потоке
-            $journal{$key}->{'ppf'} += 1;
+        # ppf - Количество пакетов в потоке
+        # bpp - Среднее число байт в пакетах
+        # bps - Среднее количество байт в секунду
+            $journal{$key}->{'ppf'} ||= 0;
+            $journal{$key}->{'bpp'} ||= 0;
+            $journal{$key}->{'bps'} ||= 0;
+
+        }
+
+        if ( defined $journal{$key}->{'SYN'} ) {
+
+            # Сбор данных сессии --
+            $journal{$key}->{'bytes'} += $p->{'ip'}->{'len'};
+            $journal{$key}->{'ppf'}   += 1;
+
+            # -- Сбор данных сессии
 
             # ACK, SYN
             $journal{$key}->{'SYN'} = 2
@@ -92,53 +111,46 @@ sub main {
                 $journal{$key}->{'FIN'} = 2 if $journal{$key}->{'FIN'} == 1;
             }
             elsif ( $journal{$key}->{'FIN'} > 0 ) {
-                ++$journal{$key}->{'ACK'};
+                $journal{$key}->{'ACK'} += 1;
             }
 
-        }
-
-        if ( defined $journal{$key}->{'SYN'} ) {
-
-            $flags
-                = $journal{$key}->{'SYN'}
-                + $journal{$key}->{'FIN'}
-                + $journal{$key}->{'ACK'};
+            $flags = 0;
+            map { $flags += $_ } @{ $journal{$key} }{qw/SYN FIN ACK/};
 
             if ( $flags == 6 ) {
 
-                $journal{$key}->{'time'}
-                    = ( localtime $header{'tv_sec'} )->epoch
-                    - $journal{$key}->{'time'};
+             # Время окончания сессии
+             # Получается из последнего ACK-пакета
+                $journal{$key}->{'e_time'} = $time{'packet'};
 
-                $journal{$key}->{'time'} ||= 1;
+                # Продолжительность сессии
+                $journal{$key}->{'duration'}
+                    = $journal{$key}->{'e_time'} - $journal{$key}->{'s_time'};
+                $journal{$key}->{'duration'} ||= 1;
 
-                # Среднее число байт в пакетах
                 $journal{$key}->{'bpp'}
                     = $journal{$key}->{'bytes'} / $journal{$key}->{'ppf'};
 
-              # Среднее количество байт в секунду
-                $journal{$key}->{'bps'}
-                    = $journal{$key}->{'bytes'} / $journal{$key}->{'time'};
+                $journal{$key}->{'bps'} = $journal{$key}->{'bytes'}
+                    / $journal{$key}->{'duration'};
 
-                open( my $fh, '>>', &report_path(01) );
+                open( my $fh, '>>', &report_path( $time{'start'}->epoch ) );
 
-         # Если отчет пустой, добавим заголовок
-                if ( -z &report_path(01) ) {
-                    print $fh "\""
-                        . (
-                        join "\", \"",
-                        qw/time src_ip src_port dst_ip dst_port ppf bpp bps/
-                        ) . "\"\n";
+                # Добавим заголовок
+                if ( -z &report_path( $time{'start'}->epoch ) ) {
+                    print $fh join( ",",
+                        qw/time src_ip src_port dst_ip dst_port ppf bpp bps/ )
+                        . "\n";
                 }
 
                 print $fh "\""
                     . (
                     join( "\", \"",
-                        $t->hms,
-                        &PP::toDotQuad( $journal{$key}->{'src'}->{'ip'} ),
-                        $journal{$key}->{'src'}->{'port'},
-                        &PP::toDotQuad( $journal{$key}->{'dst'}->{'ip'} ),
-                        $journal{$key}->{'dst'}->{'port'},
+                        $time{'start'}->hms,
+                        &PP::toDotQuad( $journal{$key}->{'src'} ),
+                        $journal{$key}->{'src_port'},
+                        &PP::toDotQuad( $journal{$key}->{'dst'} ),
+                        $journal{$key}->{'dst_port'},
                         $journal{$key}->{'ppf'},
                         sprintf( "%.2f", $journal{$key}->{'bpp'} ),
                         sprintf( "%.2f", $journal{$key}->{'bps'} ) )
@@ -148,6 +160,8 @@ sub main {
                 # Убираем ненужное
                 undef $journal{$key};
                 delete $journal{$key};
+
+                --$BLOCK_TIME;
             }
 
         }
@@ -157,14 +171,12 @@ sub main {
         }
 
     }
+}
 
+sub report_path {
+    return $FILE_DIR . '/' . (shift) . $FILE_EXT;
 }
 
 &main();
 
-sub report_path {
-    return REPORT_DIR . '/' . (shift) . REPORT_EXT;
-}
-
 __END__
-
