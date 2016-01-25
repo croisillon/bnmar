@@ -14,6 +14,13 @@ $| = 1;
 
 my $args = {@ARGV};
 
+unless ( scalar @ARGV ) {
+    print "For example: \n";
+    print './cut.pl --file traffic.pcap --interval 2 --todir /home/user/agreagate';
+    print "\n";
+    exit;
+}
+
 my $PCAP_IN       = $args->{'--file'}     || 'traffic.pcap';
 my $TIME_INTERVAL = $args->{'--interval'} || 1;
 my $FILE_DIR      = $args->{'--todir'}    || '/tmp';
