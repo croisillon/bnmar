@@ -17,15 +17,19 @@ my $args = {@ARGV};
 my $PCAP_IN       = $args->{'--file'}     || 'traffic.pcap';
 my $TIME_INTERVAL = $args->{'--interval'} || 1;
 my $FILE_DIR      = $args->{'--todir'}    || '/tmp';
+my $CLEAN         = 1;
 my $FILE_EXT      = '.csv';
 my $BLOCK_TIME    = 0;
 
 sub main {
     my ( $pcap, $packet, $errbuf, %header, $p );
+
+    unlink glob &report_path('*') if $CLEAN;
+
     $pcap = Net::Pcap::pcap_open_offline( $PCAP_IN, \$errbuf )
         or die("error reading pcap file: $errbuf");
 
-    my ( %time, $key, $flags, %journal, $i );
+    my ( %time, $key, $flags, %journal, $i, $min, $sec );
 
     $i = 0;
     while ( $packet = Net::Pcap::pcap_next( $pcap, \%header ) ) {
@@ -35,19 +39,26 @@ sub main {
 
         # Корректировка времени --
         $time{'packet'} = localtime $header{'tv_sec'};
+        ( $sec, $min ) = localtime $time{'packet'};
+        $sec += ONE_MINUTE * $min;
+        $time{'_packet'} = $time{'packet'} - $sec;
 
         if ( !$BLOCK_TIME ) {
 
             if (   ( ref $time{'finish'} ne 'Time::Piece' )
                 || ( $time{'packet'}->epoch >= $time{'finish'}->epoch ) )
             {
-                ( $time{'sec'}, $time{'min'} ) = localtime $time{'packet'};
 
-                $time{'sec'} += ONE_MINUTE * $time{'min'};
-                $time{'start'} = $time{'packet'} - $time{'sec'};
+                ( $sec, $min ) = localtime $time{'packet'};
+                $sec += ONE_MINUTE * $min;
+
+                $time{'start'} = $time{'packet'} - $sec;
 
                 $time{'finish'}
                     = $time{'start'} + ( ONE_HOUR * $TIME_INTERVAL );
+
+                print "Set start interval: " . $time{'start'}->hms . "\n";
+                print "Set finish interval: " . $time{'finish'}->hms . "\n";
             }
 
         }
@@ -64,7 +75,7 @@ sub main {
 
             # Блокируем изменение времени
             # Пока сессия не будет закончена
-            ++$BLOCK_TIME;
+            $BLOCK_TIME = 1;
 
             $journal{$key} = {};
 
@@ -82,9 +93,9 @@ sub main {
             # Количество байт в потоке
             $journal{$key}->{'bytes'} ||= 0;
 
-        # ppf - Количество пакетов в потоке
-        # bpp - Среднее число байт в пакетах
-        # bps - Среднее количество байт в секунду
+            # ppf - Количество пакетов в потоке
+            # bpp - AVG(байт в пакетах)
+            # bps - AVG(байт в секунду)
             $journal{$key}->{'ppf'} ||= 0;
             $journal{$key}->{'bpp'} ||= 0;
             $journal{$key}->{'bps'} ||= 0;
@@ -119,8 +130,8 @@ sub main {
 
             if ( $flags == 6 ) {
 
-             # Время окончания сессии
-             # Получается из последнего ACK-пакета
+                # Время окончания сессии
+                # Из последнего ACK-пакета
                 $journal{$key}->{'e_time'} = $time{'packet'};
 
                 # Продолжительность сессии
@@ -146,7 +157,7 @@ sub main {
                 print $fh "\""
                     . (
                     join( "\", \"",
-                        $time{'start'}->hms,
+                        $time{'_packet'}->hms,
                         &PP::toDotQuad( $journal{$key}->{'src'} ),
                         $journal{$key}->{'src_port'},
                         &PP::toDotQuad( $journal{$key}->{'dst'} ),
@@ -160,8 +171,7 @@ sub main {
                 # Убираем ненужное
                 undef $journal{$key};
                 delete $journal{$key};
-
-                --$BLOCK_TIME;
+                $BLOCK_TIME = 0;
             }
 
         }
