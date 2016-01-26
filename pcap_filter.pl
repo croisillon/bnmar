@@ -36,15 +36,15 @@ BEGIN {
 }
 
 sub main {
-    my ( $pcap, $packet, $errbuf, %header, $p, $pcap_dump);
-    my ( $src_ip, $dst_ip, $key, $flags, $src_port, $dst_port );
+    my ( $pcap,   $packet, $errbuf, %header, $p,        $pcap_dump );
+    my ( $src_ip, $dst_ip, $key,    $flags,  $src_port, $dst_port );
 
     $pcap = Net::Pcap::pcap_open_offline( PCAP_IN, \$errbuf )
         or die("error reading pcap file: $errbuf");
 
     $pcap_dump = Net::Pcap::pcap_dump_open( $pcap, PCAP_OUT );
-	
-    print localtime(time)->hms." - Start parsing file " . PCAP_IN . "\n";
+
+    print localtime(time)->hms . " - Start parsing file " . PCAP_IN . "\n";
     while ( $packet = Net::Pcap::pcap_next( $pcap, \%header ) ) {
 
         $p = &PP::parse_packet( $packet, \%header );
@@ -64,7 +64,8 @@ sub main {
         # If the request does not belong to any study network
         next if ( !$src_ip && !$dst_ip );
 
-# The source is not from the home network and the receiver in the home network
+        # The source is not from the home network
+        #   and the receiver in the home network
         if ( !$src_ip && $dst_ip ) {
 
             # To change address locations for future key
@@ -85,16 +86,16 @@ sub main {
 
         $flags = $p->{'tcp'}->{'flags'};
 
+        # SYN
+        # Request to start session
+        # Now we can create a file and write to all packages
+        # https://tools.ietf.org/html/rfc793#page-30
         if ( $flags == TCP_FLAG_SYN ) {
             $journal{$key}->{'SYN'} = 1;
             $journal{$key}->{'FIN'} = 0;
             $journal{$key}->{'ACK'} = 0;
         }
 
-        # SYN
-        # Request to start session
-        # Now we can create a file and write to all packages
-        # https://tools.ietf.org/html/rfc793#page-30
         if ( defined $journal{$key}->{'SYN'} ) {
 
             # Create a new temporary file
@@ -117,10 +118,10 @@ sub main {
             $journal{$key}->{'SYN'} = 2
                 if $flags == ( TCP_FLAG_ACK + TCP_FLAG_SYN );
 
-            # ACK, FIN or FIN, PSH, ACK
+            # FIN & ACK
             # https://tools.ietf.org/html/rfc793#page-39
-            if (   $flags == ( TCP_FLAG_FIN + TCP_FLAG_ACK )
-                || $flags == ( TCP_FLAG_PSH + TCP_FLAG_FIN + TCP_FLAG_ACK ) )
+            if (   ( $flags & TCP_FLAG_FIN != 0 )
+                && ( $flags & TCP_FLAG_ACK != 0 ) )
             {
                 $journal{$key}->{'FIN'} = 1 if !$journal{$key}->{'FIN'};
                 $journal{$key}->{'FIN'} = 2 if $journal{$key}->{'FIN'} == 1;
