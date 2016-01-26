@@ -1,7 +1,5 @@
 #!/usr/bin/perl
 
-use warnings;
-use strict;
 use Net::Pcap;
 use Data::Dumper;
 use Time::Piece ':override';
@@ -31,14 +29,15 @@ my $BLOCK_TIME    = 0;
 my $COUNT         = 0;
 
 sub main {
-    my ( $pcap, $packet, $errbuf, %header, $p );
+    my ( $pcap,   $packet, $errbuf,  $p );
+    my ( %header, %time,   %journal, %store );
 
     unlink glob &get_path('*') if $CLEAN;
 
     $pcap = Net::Pcap::pcap_open_offline( $PCAP_IN, \$errbuf )
         or die("error reading pcap file: $errbuf");
 
-    my ( %time, $key, $flags, %journal, $i, $min, $sec );
+    my ( $key, $flags, $i, $min, $sec, $file );
 
     $i = 0;
     while ( $packet = Net::Pcap::pcap_next( $pcap, \%header ) ) {
@@ -47,45 +46,61 @@ sub main {
         $p = &PP::parse_packet( $packet, \%header );
 
         # Корректировка времени --
+        # Текущее время пакета
         $time{'packet'} = localtime $header{'tv_sec'};
         ( $sec, $min ) = localtime $time{'packet'};
+
+        # Убираем минуты и секунды
         $sec += ONE_MINUTE * $min;
         $time{'_packet'} = $time{'packet'} - $sec;
 
         if ( !$BLOCK_TIME ) {
 
+            # (1) Конечный интервал еще не объект Time::Piece
+            # или
+            # (2) Время пакета больше конечного интервала
             if (   ( ref $time{'finish'} ne 'Time::Piece' )
                 || ( $time{'packet'}->epoch >= $time{'finish'}->epoch ) )
             {
 
-                ( $sec, $min ) = localtime $time{'packet'};
-                $sec += ONE_MINUTE * $min;
-
+                # Начальный интервал не объект Time::Piece
                 if ( ref $time{'start'} ne 'Time::Piece' ) {
-                    $time{'start'} = $time{'packet'} - $sec;
-                } else {
+
+                    # (1)
+                    $time{'start'} = $time{'_packet'};
+                }
+                else {
+                    # (2)
                     $time{'start'} = $time{'finish'};
                 }
 
+                # Определяем конечный интервал
                 $time{'finish'}
                     = $time{'start'} + ( ONE_HOUR * $TIME_INTERVAL );
 
-                $time{'timekey'}
-                    = $COUNT . '_'
-                    . $time{'start'}->hms . '-'
-                    . $time{'finish'}->hms . '-'
-                    . ( localtime(time) )->hms;
+                # Решает проблему нормализации
+                # Когда пакеты одного интервала были в файлах другого интервала
+                # Привязка каждого часа временного интервала к определенному файлу
+                $file = $time{'start'}->hour . '-' . $time{'finish'}->hour;
+                $min  = $TIME_INTERVAL;
+                $sec  = $time{'start'};
+
+                while ( $min-- ) {
+                    $store{ $sec->epoch } = $COUNT . '_' . $file;
+                    $sec = $sec + ONE_HOUR;
+                }
 
                 ++$COUNT;
 
-                print localtime(time)->hms
+                say localtime(time)->hms
                     . " - Set start interval: "
-                    . $time{'start'}->hms . "\n";
-                print localtime(time)->hms
+                    . $time{'start'}->hms;
+                say localtime(time)->hms
                     . " - Set finish interval: "
-                    . $time{'finish'}->hms . "\n";
-            }
+                    . $time{'finish'}->hms;
 
+                $sec = $min = $file = undef;
+            }
         }
 
         # -- Корректировка времени
@@ -172,10 +187,13 @@ sub main {
                 $journal{$key}->{'bps'} = $journal{$key}->{'bytes'}
                     / $journal{$key}->{'duration'};
 
-                open( my $fh, '>>', &get_path( $time{'timekey'} ) );
+                # Открываем файл к которому относится
+                #   текущий интервал времени
+                $file = $store{ $journal{$key}->{'s_time'}->epoch };
+                open( my $fh, '>>', &get_path($file) );
 
                 # Добавим заголовок
-                if ( -z &get_path( $time{'timekey'} ) ) {
+                if ( -z &get_path($file) ) {
                     print $fh join( ",",
                         qw/time src_ip src_port dst_ip dst_port ppf bpp bps/ )
                         . "\n";
@@ -198,6 +216,7 @@ sub main {
                 # Убираем ненужное
                 undef $journal{$key};
                 delete $journal{$key};
+
                 $BLOCK_TIME = 0;
             }
 
