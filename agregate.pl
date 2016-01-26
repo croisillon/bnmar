@@ -15,23 +15,24 @@ my $args = {@ARGV};
 unless ( scalar @ARGV ) {
     print "For example: \n";
     print
-        './cut.pl --file traffic.pcap --interval 2 --todir /home/user/agregate';
+        './agregate.pl --file traffic.pcap --interval 2 --tmpdir /tmp --out /home/user/agregate.csv';
     print "\n";
     exit;
 }
 
 my $PCAP_IN       = $args->{'--file'}         || 'traffic.pcap';
 my $TIME_INTERVAL = $args->{'--interval'}     || 1;
-my $FILE_DIR      = $args->{'--todir'}        || '/tmp';
+my $FILE_DIR      = $args->{'--tmpdir'}       || '/tmp';
+my $OUT           = $args->{'--out'}          || '/tmp/agregate.csv';
 my $CLEAN         = exists $args->{'--clean'} || 0;
 my $FILE_EXT      = '.csv';
 my $BLOCK_TIME    = 0;
 my $COUNT         = 0;
 
 sub main {
-    my ( $pcap,   $packet, $errbuf,  $p,     $i, $line, $j );
-    my ( %header, %time,   %data, %store, %v, @files, @fph );
-    my ( $key,    $min,    $sec,     $flags, $file, $fh );
+    my ( $pcap,   $packet, $errbuf, $p,     $i, $line,  $j );
+    my ( %header, %time,   %data,   %store, %v, @files, @fph );
+    my ( $key, $min, $sec, $flags, $file, $fh );
 
     unlink glob &get_path('*') if $CLEAN;
 
@@ -60,7 +61,7 @@ sub main {
                 || ( $time{'packet'}->epoch >= $time{'finish'}->epoch ) )
             {
 
-                # Начальный интервал не объект Time::Piece
+           # Начальный интервал не объект Time::Piece
                 if ( ref $time{'start'} ne 'Time::Piece' ) {
 
                     # (1)
@@ -69,7 +70,6 @@ sub main {
                 else {
                     # (2)
                     $time{'start'} = $time{'finish'};
-                    last;
                 }
 
                 # Определяем конечный интервал
@@ -83,7 +83,7 @@ sub main {
                     = $COUNT . '_'
                     . $time{'start'}->hour . '-'
                     . $time{'finish'}->hour;
-                
+
                 $min = $TIME_INTERVAL;
                 $sec = $time{'start'};
 
@@ -100,17 +100,13 @@ sub main {
                 ++$COUNT;
 
                 say localtime(time)->hms
-                    . " - Set start interval: "
-                    . $time{'start'}->hms;
-                say localtime(time)->hms
-                    . " - Set finish interval: "
-                    . $time{'finish'}->hms;
+                    . " - Time interval [".$time{'start'}->hms.';'. $time{'finish'}->hms.')';
 
                 $sec = $min = $file = undef;
             }
         }
-        # -- Корректировка времени
 
+        # -- Корректировка времени
 
         $key = 0;
         map { $key += $_; } @{ $p->{'ip'} }{qw/src dst/},
@@ -191,8 +187,8 @@ sub main {
                 $data{$key}->{'bpp'}
                     = $data{$key}->{'bytes'} / $data{$key}->{'ppf'};
 
-                $data{$key}->{'bps'} = $data{$key}->{'bytes'}
-                    / $data{$key}->{'duration'};
+                $data{$key}->{'bps'}
+                    = $data{$key}->{'bytes'} / $data{$key}->{'duration'};
 
                 # Открываем файл к которому
                 #   относится текущий интервал времени
@@ -243,8 +239,10 @@ sub main {
 
     for ( $j = 0; $j < scalar @files; ++$j ) {
 
-        say localtime(time)->hms.qq{ - Starting agregate file }.$files[$j];
-        open $fh, '<', &get_path($files[$j]) or die $!;
+        say localtime(time)->hms
+            . qq{ - Starting agregate file }
+            . $files[$j];
+        open $fh, '<', &get_path( $files[$j] ) or die $!;
 
         undef %data;
 
@@ -260,20 +258,21 @@ sub main {
             $line =~ s/\s*//g;
 
             # Получаем поля
-            ($v{'time'}, $v{'src'}, $v{'srcp'}, 
-            $v{'dst'}, $v{'dstp'}, $v{'ppf'}, 
-            $v{'bpp'}, $v{'bps'}) = split /\",\"/, $line;
+            (   $v{'time'}, $v{'src'}, $v{'srcp'}, $v{'dst'},
+                $v{'dstp'}, $v{'ppf'}, $v{'bpp'},  $v{'bps'}
+            ) = split /\",\"/, $line;
 
             # Ключ из ip_src + ip_dst + port_dst
             $key = $v{'src'} . $v{'dst'} . $v{'dstp'};
 
             # Сохраняем ключи
             unless ( defined $store{'keys_h'}->{$key} ) {
+
                 # Массив ключей необходим для уникального набора
                 # Тем самым исключив повторные ключи
-                push @{$store{'keys_a'}}, $key;
+                push @{ $store{'keys_a'} }, $key;
 
-                # Хеш необходим чтобы записать полный набор ключей
+                # Хеш необходим что бы записать полный набор ключей
                 $store{'keys_h'}->{$key} = 1;
             }
 
@@ -283,8 +282,8 @@ sub main {
 
             # О каждом потоке собираем информацию
             # Адрес источника, адрес и порт назначения
-            $data{$key}->{'src'} = $v{'src'};
-            $data{$key}->{'dst'} = $v{'dst'};
+            $data{$key}->{'src'}  = $v{'src'};
+            $data{$key}->{'dst'}  = $v{'dst'};
             $data{$key}->{'dstp'} = $v{'dstp'};
 
             # Информацию о критериях потока агрегируем в массив
@@ -293,10 +292,11 @@ sub main {
             push @{ $data{$key}->{'bps'} }, $v{'bps'};
 
             # Подсчитываем количество схожих потоков в интервале времени
-            if ( $data{$key}->{'fph'}->{$v{'time'}} ) {
-                $data{$key}->{'fph'}->{$v{'time'}} += 1;
-            } else {
-                $data{$key}->{'fph'}->{$v{'time'}} = 1;
+            if ( $data{$key}->{'fph'}->{ $v{'time'} } ) {
+                $data{$key}->{'fph'}->{ $v{'time'} } += 1;
+            }
+            else {
+                $data{$key}->{'fph'}->{ $v{'time'} } = 1;
             }
 
         }
@@ -304,28 +304,29 @@ sub main {
         undef $fh;
 
         # Обрабатываем посчитанные данные
-        open $fh, '>>', &get_path('agregate') or die $!;
+        open $fh, '>>', $OUT or die $!;
 
         while ( $key = shift @{ $store{'keys_a'} } ) {
 
             # Достаем информацию об агрегированных потоках
-            (
-                $v{'fph'}, $v{'src'}, $v{'dst'}, 
-                $v{'dstp'}, $v{'ppf'}, $v{'bpp'}, 
-                $v{'bps'}
+            (   $v{'fph'}, $v{'src'}, $v{'dst'}, $v{'dstp'},
+                $v{'ppf'}, $v{'bpp'}, $v{'bps'}
             ) = @{ $data{$key} }{qw/fph src dst dstp ppf bpp bps/};
 
+            # Извлекаем fph
             @fph = ();
-            map { 
-                push @fph, ( $v{'fph'}->{$_} || 0 );
-            } @{ $store{'intervals'}->[$j] };
+            map { push @fph, ( $v{'fph'}->{$_} || 0 ); }
+                @{ $store{'intervals'}->[$j] };
 
+            # Готовим данные для записи
             $v{'ppf'} = join ',', @{ $v{'ppf'} };
             $v{'bpp'} = join ',', @{ $v{'bpp'} };
             $v{'bps'} = join ',', @{ $v{'bps'} };
             $v{'fph'} = join ',', @fph;
 
-            print $fh join ',', map { qq{"$_"} } @{\%v}{qw/src dst dstp fph ppf bpp bps/};
+            print $fh join ',',
+                map {qq{"$_"}} @{ \%v }{qw/src dst dstp fph ppf bpp bps/};
+
             print $fh "\n";
 
         }
@@ -337,7 +338,7 @@ sub main {
         $store{'keys_a'} = undef;
         undef %v;
 
-        say localtime(time)->hms.qq{ - End agregate file }.$files[$j];
+        say localtime(time)->hms . qq{ - End agregate file } . $files[$j];
 
     }
 
