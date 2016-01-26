@@ -2,7 +2,6 @@
 
 use common::sense;
 use Net::DNS;
-use Carp;
 
 select STDOUT;
 $| = 1;
