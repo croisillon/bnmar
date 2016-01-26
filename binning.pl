@@ -29,7 +29,7 @@ sub main {
     while ( $line = <$fh> ) {
 
         # Отбрасываем заголовок
-        unless ($i) { $i = 1; next; }
+        unless ($i) { ++$i; next; }
 
         # Убираем лишние знаки
         $line =~ s/\n$//;
@@ -42,8 +42,9 @@ sub main {
 
         $key = join '', @{ \%vars }{qw/src dst dstp/};
         $key =~ s/\D//g;
+        $key = $i.$key;
 
-        push @keys, $key unless exists $data{$key};
+        push @keys, $key;
 
         map { $data{$key}->{$_} = $vars{$_} } qw/src dst dstp/;
         map { $data{$key}->{$_} = undef } qw/fph ppf bpp bps/;
@@ -54,6 +55,8 @@ sub main {
             push @{ $vars{ '_' . $_ } }, @$j;
         } qw/fph ppf bpp bps/;
 
+        ++$i;
+
     }
     close $fh;
     undef $fh;
@@ -61,6 +64,7 @@ sub main {
     # Определим интервалы
     my ( $y, $z );
     foreach $y (qw/fph ppf bpp bps/) {
+        push @{ $boundary{$y} }, "0";
         map {
             $z = &PDL::pctover( pdl( $vars{ '_' . $y } ), $_ / 100 );
             push @{ $boundary{$y} }, qq{$z};
@@ -75,7 +79,6 @@ sub main {
 
     $key = $y = $z = $i = $j = $len = undef;
     my $crit;
-
     while ( $key = shift @keys ) {
 
         foreach $crit (qw/fph ppf bpp bps/) {
@@ -93,11 +96,13 @@ sub main {
                         && ( $j < $y || $j <= $z ) )
                     {
                         $data{$key}->{ '_' . $crit }->[$i] += 1;
+                        last;
      					# say '(rule 1) $j('.$j.') < $y('.$y.') || $j('.$j.') <= $z('.$z.') '.$i;
                     }
 
                     if ( !defined $z && ( $j > $y ) ) {
                         $data{$key}->{ '_' . $crit }->[$i] += 1;
+                        last;
                         # say '(rule 2) $j('.$j.') > $y('.$y.') '.$i;
                     }
                 }
@@ -113,6 +118,9 @@ sub main {
     close $fh;
     undef $fh;
 
+    # say 'data ', Dumper $data{$key}->{'ppf'};
+    # say 'backet ', Dumper $data{$key}->{'_ppf'};
+    # say 'criteria ', Dumper $boundary{$crit};
 }
 
 &main();
