@@ -15,7 +15,7 @@ $| = 1;
 my $args = {@ARGV};
 my $pct_range = [ 30, 60, 90 ];
 
-my $FILE_IN = $args->{'--file'};
+my $FILE_IN = $args->{'--file'} || 'vector.csv';
 my $FILE_OUT = $args->{'--out'} || '/tmp/binning.csv';
 
 sub main {
