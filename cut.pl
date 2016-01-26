@@ -47,7 +47,6 @@ sub main {
         $p = &PP::parse_packet( $packet, \%header );
 
         # Корректировка времени --
-        # TODO: Прибавлять время не основываясь на времени пакета
         $time{'packet'} = localtime $header{'tv_sec'};
         ( $sec, $min ) = localtime $time{'packet'};
         $sec += ONE_MINUTE * $min;
@@ -62,7 +61,11 @@ sub main {
                 ( $sec, $min ) = localtime $time{'packet'};
                 $sec += ONE_MINUTE * $min;
 
-                $time{'start'} = $time{'packet'} - $sec;
+                if ( ref $time{'start'} ne 'Time::Piece' ) {
+                    $time{'start'} = $time{'packet'} - $sec;
+                } else {
+                    $time{'start'} = $time{'finish'};
+                }
 
                 $time{'finish'}
                     = $time{'start'} + ( ONE_HOUR * $TIME_INTERVAL );
@@ -110,7 +113,9 @@ sub main {
             $journal{$key}->{'ACK'} ||= 0;
 
             # Время начала сессии
-            $journal{$key}->{'s_time'} = $time{'packet'};
+            ( $sec, $min ) = localtime $time{'packet'};
+            $sec += ONE_MINUTE * $min;
+            $journal{$key}->{'s_time'} = $time{'packet'} - $sec;
 
             # Количество байт в потоке
             $journal{$key}->{'bytes'} ||= 0;
@@ -137,8 +142,8 @@ sub main {
                 if $flags == ( TCP_FLAG_ACK + TCP_FLAG_SYN );
 
             # ACK, FIN or FIN, PSH, ACK
-            if (   $flags == ( TCP_FLAG_FIN + TCP_FLAG_ACK )
-                || $flags == ( TCP_FLAG_PSH + TCP_FLAG_FIN + TCP_FLAG_ACK ) )
+            if (   ( $flags & TCP_FLAG_FIN != 0 )
+                && ( $flags & TCP_FLAG_ACK != 0 ) )
             {
                 $journal{$key}->{'FIN'} = 1 if !$journal{$key}->{'FIN'};
                 $journal{$key}->{'FIN'} = 2 if $journal{$key}->{'FIN'} == 1;
@@ -176,13 +181,10 @@ sub main {
                         . "\n";
                 }
 
-           # TODO: Сделать корректировку времени
-           # 	когда сессия началась в одном часу,
-           # 	а закончилась в другом
                 print $fh "\""
                     . (
                     join( "\", \"",
-                        $time{'_packet'}->hms,
+                        $journal{$key}->{'s_time'}->hms,
                         &PP::toDotQuad( $journal{$key}->{'src'} ),
                         $journal{$key}->{'src_port'},
                         &PP::toDotQuad( $journal{$key}->{'dst'} ),
