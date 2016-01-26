@@ -239,6 +239,8 @@ sub main {
 
     for ( $j = 0; $j < scalar @files; ++$j ) {
 
+        next unless -e &get_path( $files[$j] );
+
         say localtime(time)->hms
             . qq{ - Starting agregate file }
             . $files[$j];
@@ -275,11 +277,7 @@ sub main {
                 # Хеш необходим что бы записать полный набор ключей
                 $store{'keys_h'}->{$key} = 1;
             }
-
-            # # Считаем схожие потоки
-            # $data{$key}->{'i'} ||= 0;
-            # $data{$key}->{'i'} += 1;
-
+            
             # О каждом потоке собираем информацию
             # Адрес источника, адрес и порт назначения
             $data{$key}->{'src'}  = $v{'src'};
@@ -305,6 +303,8 @@ sub main {
 
         # Обрабатываем посчитанные данные
         open $fh, '>>', $OUT or die $!;
+        print $fh join ',', map { qq{"$_"} } qw/src_ip dst_ip dst_port fph ppf bpp bps/;
+        print $fh "\n";
 
         while ( $key = shift @{ $store{'keys_a'} } ) {
 
