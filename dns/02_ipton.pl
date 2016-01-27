@@ -1,26 +1,46 @@
 #!/usr/bin/perl
 
 use common::sense;
+use Getopt::Long 'HelpMessage';
 use Socket qw/inet_aton/;
 
 select STDOUT;
 $| = 1;
 
-my $args = {@ARGV};
+my ( $file, $out );
 
-my ( $resolver, $reply );
+GetOptions(
+    'file=s' => \$file,
+    'out=s'  => \$out,
+    'help'   => sub { HelpMessage(0) }
+) or HelpMessage(1);
 
-if ( exists $args->{'--help'} || exists $args->{'-h'} ) {
-    &_help();
-    exit 1;
+# Defaults
+$file = $file || 'domains.table.txt';
+$out  = $out  || 'domains.digits.txt';
+
+die qq{File "$file" is not found\n}   unless -e $file;
+die qq{FIle "$file" cannot be read\n} unless -r $file;
+
+my ( $in_fh, $out_fh );
+
+open $in_fh,  '<', $file or die $! . "\n";
+open $out_fh, '>', $out  or die $! . "\n";
+
+say 'Processed...';
+for (<$in_fh>) {
+    if ( $_ =~ m/^\D/ ) { next; }
+    map {
+        chomp $_;
+        print $out_fh ( unpack 'N', &inet_aton($_) ), "\n";
+    } split ',', $_;
 }
+say 'Done';
 
-my $IN = $args->{'-i'} || $args->{'--input'} || 'domains.table.txt';
+close($in_fh);
+close($out_fh);
 
-die qq{File "$IN" is not found\n}   unless -e $IN;
-die qq{FIle "$IN" cannot be read\n} unless -r $IN;
-
-my $OUT = $args->{'-o'} || $args->{'--output'} || 'domains.digits.txt';
+__END__
 
 =encoding utf8
 
@@ -30,41 +50,79 @@ IP address to Number
 
 =head1 SYNOPSIS
 
-Преобразует ip-адреса в числа
+ ipton.pl [КЛЮЧ]
+
+ -f, --file        Входной файл (по умолчанию: domains.table.txt)
+ -o, --out         Выходной файл (по умолчанию: domains.digits.txt)
+
+     --help        Показать эту справку и выйти
+
+=head2 Примеры
+
+ ipton.pl -f ip.txt -o digits.txt
+
+=head2 Формат входного файла
+
+=over
+
+=item #adobe.com
+
+=item 192.150.16.117
+
+=item #leboncoin.fr
+
+=item 193.164.197.82,193.164.196.82
+
+=item #espn.go.com
+
+=item 199.181.133.61
+
+=item ...
+
+=item ------- OR -------
+
+=item 111.206.227.118,211.152.123.224
+
+=item 188.125.93.100,188.125.93.101
+
+=item 188.125.93.100,188.125.93.101
+
+=item 104.156.81.194,23.235.37.194,104.156.85.194,23.235.33.194
+
+=item ...
+
+=back
+
+=head2 Формат выходного файла
+
+=over
+
+=item 1875829622
+
+=item 3549985760
+
+=item 3162332516
+
+=item 3162332517
+
+=item 3162332516
+
+=item 3162332517
+
+=item 1755075010
+
+=item 401286594
+
+=item 1755076034
+
+=item 401285570
+
+=item ...
+
+=back
 
 =head1 AUTHOR
 
-Denis Lavrov C<diolavr@gmail.com>
+Denis Lavrov (C<diolavr@gmail.com>)
 
 =cut
-
-open my $in_fh, '<', $IN  or die $! . "\n";
-open my $out_fh,  '>', $OUT or die $! . "\n";
-
-print "Processed...\n";
-for (<$in_fh>) {
-    if ( $_ =~ m/^#/ ) { next; }
-    map { print $out_fh ( unpack 'N', &inet_aton($_) ), "\n"; }
-        split ',', $_;
-}
-print "Done...\n";
-
-close($in_fh);
-close($out_fh);
-
-sub _help {
-    print qq{Использование: ipton.pl [-i FILE] [-o FILE]] \n},
-    q{Преобразует IP-адреса в числа },
-    qq{Результат записывается в файл.\n\n};
-
-    print sprintf("%5s, %s\t %s", '-i', '--input',  q{Входной файл (по умолчанию: domains.table.txt)}), "\n";
-    print sprintf("%5s, %s\t %s", '-o', '--output', q{Выходной файл (по умолчанию: domains.digits.txt)}), "\n";
-    print "\n";
-    print sprintf("%6s %s\t %s", '', '--help', q{Показать эту справку и выйти}), "\n";
-    print "\n";
-
-    print qq{Пример: \n},
-    q{ipton.pl -i ip.txt -o digits.txt}, "\n\n",
-}
-
-__END__
