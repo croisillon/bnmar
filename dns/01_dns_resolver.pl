@@ -7,12 +7,13 @@ use Net::DNS;
 select STDOUT;
 $| = 1;
 
-my ( $file, $out, @dns );
+my ( $file, $out, @dns, $lookup );
 
 GetOptions(
     'file=s'   => \$file,
     'out=s'    => \$out,
     'dns=s{,}' => \@dns,
+    'lookup'   => \$lookup,
     'help'     => sub { HelpMessage(0) }
 ) or HelpMessage(1);
 
@@ -38,7 +39,7 @@ open( $in_fh, '<', $file )
     or die "Cannot open file: $!\n";
 
 open( $out_fh, '>', $out )
-    or die "cannot open file: $!\n";
+    or die "Cannot open file: $!\n";
 
 say "Processed...";
 for (<$in_fh>) {
@@ -47,15 +48,18 @@ for (<$in_fh>) {
     next unless defined $_;
 
     # Отправляем запрос DNS серверам
-    $reply = &resolv( $resolver, $_ );
+    $reply = &find( $resolver, $_ );
 
     # Проверяем состояние
     unless ($reply) {
-        say qq{Hostname $_ cannot be resolved to IP address};
+        unless ( $lookup ) {
+            say qq{Hostname $_ cannot be resolved to IP address};
+        } else {
+            say qq{IP address $_ font found};
+        }
         next;
     }
 
-    # Сохраняем IP адрес
     print $out_fh '#' . $_ . "\n";
     print $out_fh ( join ',', @$reply ) . "\n";
 }
@@ -64,17 +68,22 @@ say "Done";
 close($out_fh);
 close($in_fh);
 
-sub resolv {
-    my ( $rsl, $domain ) = @_;
+sub find {
+    my ( $rsl, $rec ) = @_;
 
-    my $reply = $rsl->search($domain);
+    my $reply = $rsl->search($rec);
 
     return undef unless $reply;
 
     my @ip;
     foreach my $rec ( $reply->answer ) {
-        next unless $rec->type eq "A";
-        push @ip, $rec->address;
+        if ( $lookup ) {
+            next unless $rec->type eq "PTR";
+            push @ip, $rec->ptrdname;
+        } else {
+            next unless $rec->type eq "A";
+            push @ip, $rec->address;
+        }
     }
 
     return \@ip;
@@ -88,7 +97,7 @@ DNS Resolver
 
 =head1 VERSION
 
-Version 0.03
+Version 0.04
 
 =head1 SYNOPSIS
 
@@ -97,6 +106,7 @@ Version 0.03
  -f, --file        Входной файл (по умолчанию: domains.txt)
  -o, --out         Выходной файл (по умолчанию: domains.table)
  -d, --dns         Список DNS-серверов через запятую (по умолчанию: 8.8.8.8, 8.8.4.4)
+     --lookup      Произвести поиск домена по IP-адресу
 
      --help        Показать эту справку и выйти
 
@@ -104,6 +114,7 @@ Version 0.03
 
  dns_resolver.pl --out ip_adreses.txt --dns 77.77.8.8, 8.8.8.8
  dns_resolver.pl -d 8.8.8.8
+ dns_resolver.pl --lookup
 
 =head2 Формат входного файла
 
@@ -154,14 +165,16 @@ Version 0.03
 Обращается к DNS-серверам для получения ip-адресов доменных имен.
 Для каждого доменного имени получает все возможные ip-адреса.
 Результат записывается в файл с сохранением доменного имени и принадлежащих ему ip-адресов.
+Если используется ключ --lookup то произойдет поиск доменного имени по IP-адресу
 
 =head2 Functions
 
 =over 1
 
-=item C<resolv(resolv, domain)>
+=item C<find(resolv, rec)>
     Возвращает ссылку на массив после обработки запросов к DNS-серверам
     В результатах фильтрует только записи типа "A"
+    В случае когда надо найти домены вернет ссылки типа PTR
 
 =back
 
