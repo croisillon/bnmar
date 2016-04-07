@@ -75,7 +75,7 @@ sub main {
     }
 
     open $fh, '>', $FILE_OUT or die $!;
-    print $fh qq{"src_ip","dst_ip","dst_port","fph","ppf","bpp","bps"\n};
+    print $fh qq{"src_ip";"dst_ip";"dst_port";"fph";"ppf";"bpp";"bps"\n};
 
     $key = $y = $z = $i = $j = $len = undef;
     my $crit;
@@ -111,7 +111,7 @@ sub main {
             $data{$key}->{ '_' . $crit } = join ',',
                 @{ $data{$key}->{ '_' . $crit } };
         }
-        print $fh join ',', map { qq{"$_"} } @{$data{$key}}{qw/src dst dstp _fph _ppf _bpp _bps/};
+        print $fh join ';', map { qq{"$_"} } @{$data{$key}}{qw/src dst dstp _fph _ppf _bpp _bps/};
         print $fh "\n";
     }
 

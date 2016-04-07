@@ -33,6 +33,8 @@ cl <- XMeans(df, c("-L", 10, "-H", 100, "-use-kdtree", "-K", "weka.core.neighbou
 summary <- table(predict(cl))
 table_df <- data.frame(src=table$src_ip,dst=table$dst_ip,port=table$dst_port,fph=table$fph,ppf=table$ppf,bpp=table$bpp,bps=table$bps,cluster_id=cl$class_ids)
 
+print(summary)
+
 # write.table(table_df, file = "xmeans_clustering.csv", sep = ",", col.names = NA, qmethod = "double")
 # write.table(summary, file = "xmeans_summary.csv", sep = ",", col.names = NA, qmethod = "double")
 
