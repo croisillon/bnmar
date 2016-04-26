@@ -2,11 +2,10 @@
 
 use warnings;
 use strict;
-use Net::Pcap;
 use Time::Piece ':override';
 use Time::Seconds;
 use Data::Dumper;
-use common::sense;
+use feature ':5.10';
 use PDL;
 
 select STDOUT;
