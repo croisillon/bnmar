@@ -13,7 +13,7 @@ require(RWeka)
 
 rm(list=ls())
 
-table <- read.csv('binned.csv', header=T, sep=";", stringsAsFactors=F );
+table <- read.csv('result_binning.csv', header=T, sep=";", stringsAsFactors=F );
 
 nrow <- length(unlist(strsplit(table$fph[1], ",")))
 apfunc <- function(x) {
@@ -38,4 +38,4 @@ print(summary)
 write.table(table_df, file = "xmeans_clustering.csv", sep = ",", col.names = NA, qmethod = "double")
 write.table(summary, file = "xmeans_summary.csv", sep = ",", col.names = NA, qmethod = "double")
 
-print('Done')
+print('Done...')

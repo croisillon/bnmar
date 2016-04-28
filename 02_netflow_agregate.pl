@@ -36,7 +36,7 @@ sub main {
 
     unlink glob &get_path('*') if $CLEAN;
 
-    open $pcap, '<', $PCAP_IN or die $!;
+    open $pcap, '<', $PCAP_IN or die $PCAP_IN.' ('.$!.')';
 
     while ( $packet = <$pcap> ) {
 

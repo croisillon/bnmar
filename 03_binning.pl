@@ -69,8 +69,8 @@ sub main {
             push @{ $boundary{$y} }, qq{$z};
         } @$pct_range;
 
-        undef $vars{ '_' . $_ };
-        delete $vars{ '_' . $_ };
+        undef $vars{ '_' . $_ } if $_;
+        delete $vars{ '_' . $_ } if $_;
     }
 
     open $fh, '>', $FILE_OUT or die $!;
