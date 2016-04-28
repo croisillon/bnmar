@@ -1,4 +1,5 @@
 #!/usr/bin/perl
+# For agregation netflow files
 
 use Data::Dumper;
 use Time::Piece ':override';
