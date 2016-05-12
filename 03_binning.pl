@@ -37,6 +37,7 @@ my $pct_range = [ 5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90 ];
 if ( $PCT_RANGE ) {
     $pct_range = [];
     for ( split ',', $PCT_RANGE ) { push @$pct_range, ($_ + 0); }
+    say "You set range: [ 0, ". (join ', ', @$pct_range) .' ]';
 } elsif ( $PCT_INTERVAL && exists $PCT_RANGE_INTERVALS{ $PCT_INTERVAL } ) {
     $pct_range = $PCT_RANGE_INTERVALS{ $PCT_INTERVAL };
 }
