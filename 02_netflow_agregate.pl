@@ -20,13 +20,14 @@ unless ( scalar @ARGV ) {
     exit;
 }
 
-my $PCAP_IN       = $args->{'--file'}         || 'nf_traffic.txt';
-my $TIME_INTERVAL = $args->{'--interval'}     || 1;
-my $FILE_DIR      = $args->{'--tmpdir'}       || '/tmp';
-my $OUT           = $args->{'--out'}          || '/tmp/agregate.csv';
-my $CLEAN         = exists $args->{'--clean'} || 1;
+my $PCAP_IN       = $args->{'--file'}     || 'nf_traffic.txt';
+my $TIME_INTERVAL = $args->{'--interval'} || 1;
+my $FILE_DIR      = $args->{'--tmpdir'}   || '/tmp';
+my $OUT           = $args->{'--out'}      || '/tmp/agregate.csv';
+my $CLEAN         = 1;
 my $FILE_EXT      = '.csv';
-my $NEW_INTERVAL    = 0;
+my $PREFIX        = '.nfag';
+my $NEW_INTERVAL  = 0;
 my $COUNT         = 0;
 
 sub main {
@@ -34,9 +35,9 @@ sub main {
     my ( %header, %time,   %data,   %store, %v, @files, @fph );
     my ( $key, $min, $sec, $flags, $file, $fh );
 
-    unlink glob &get_path('*.nfag') if $CLEAN;
+    unlink glob &get_path('*') if $CLEAN;
 
-    open $pcap, '<', $PCAP_IN or die $PCAP_IN.' ('.$!.')';
+    open $pcap, '<', $PCAP_IN or die $PCAP_IN . ' (' . $! . ')';
 
     while ( $packet = <$pcap> ) {
 
@@ -51,14 +52,14 @@ sub main {
         $sec += ONE_MINUTE * $min;
         $time{'_packet'} = $time{'packet'} - $sec;
 
-        # (1) Конечный интервал еще не объект Time::Piece
-        # или
-        # (2) Время пакета больше конечного интервала
+# (1) Конечный интервал еще не объект Time::Piece
+# или
+# (2) Время пакета больше конечного интервала
         if (   ( ref $time{'finish'} ne 'Time::Piece' )
             || ( $time{'packet'}->epoch >= $time{'finish'}->epoch ) )
         {
 
-        	# Начальный интервал не объект Time::Piece
+           # Начальный интервал не объект Time::Piece
             if ( ref $time{'start'} ne 'Time::Piece' ) {
 
                 # (1)
@@ -70,17 +71,15 @@ sub main {
             }
 
             # Определяем конечный интервал
-            $time{'finish'}
-                = $time{'start'} + ( ONE_HOUR * $TIME_INTERVAL );
+            $time{'finish'} = $time{'start'} + ( ONE_HOUR * $TIME_INTERVAL );
 
-            # Решает проблему нормализации
-            # Когда пакеты одного интервала были в файлах другого интервала
-            # Привязка каждого часа временного интервала к определенному файлу
+# Решает проблему нормализации
+# Когда пакеты одного интервала были в файлах другого интервала
+# Привязка каждого часа временного интервала к определенному файлу
             $file
                 = $COUNT . '_'
                 . $time{'start'}->hour . '-'
-                . $time{'finish'}->hour
-                . '.nfag';
+                . $time{'finish'}->hour;
 
             $min = $TIME_INTERVAL;
             $sec = $time{'start'};
@@ -98,13 +97,17 @@ sub main {
             ++$COUNT;
 
             say localtime(time)->hms
-                . " - Time interval [".$time{'start'}->dmy('.').' '.$time{'start'}->hms.';'. $time{'finish'}->hms.')';
+                . " - Time interval ["
+                . $time{'start'}->dmy('.') . ' '
+                . $time{'start'}->hms . ';'
+                . $time{'finish'}->hms . ')';
 
             $sec = $min = $file = undef;
 
             $NEW_INTERVAL = 1;
-        } else {
-        	$NEW_INTERVAL = 0;
+        }
+        else {
+            $NEW_INTERVAL = 0;
         }
 
         # -- Корректировка времени
@@ -113,34 +116,33 @@ sub main {
         map { $key += $_; } @{ $p->{'ip'} }{qw/src dst/},
             @{ $p->{'tcp'} }{qw/dst_port/};
 
-        if ( $NEW_INTERVAL ) {
+        if ($NEW_INTERVAL) {
             $data{$key} = {};
 
-            $data{$key}->{'bytes'} = 0;
-            $data{$key}->{'ppf'} = 0;
-            $data{$key}->{'bpp'} = 0;
-            $data{$key}->{'bps'} = 0;
-            $data{$key}->{'pps'} = 0;
+            $data{$key}->{'bytes'}    = 0;
+            $data{$key}->{'ppf'}      = 0;
+            $data{$key}->{'bpp'}      = 0;
+            $data{$key}->{'bps'}      = 0;
+            $data{$key}->{'pps'}      = 0;
             $data{$key}->{'duration'} = 0;
-            $data{$key}->{'flows'} = 0;
+            $data{$key}->{'flows'}    = 0;
         }
 
         map { $data{$key}->{$_} = $p->{'ip'}->{$_}; } qw/src dst/;
-        map { $data{$key}->{$_} = $p->{'tcp'}->{$_}; }
-            qw/dst_port/;
+        map { $data{$key}->{$_} = $p->{'tcp'}->{$_}; } qw/dst_port/;
 
-	    # Время начала сессии
-	    ( $sec, $min ) = localtime $time{'packet'};
-	    $sec += ONE_MINUTE * $min;
-	    $data{$key}->{'s_time'} = $time{'packet'} - $sec;
+        # Время начала сессии
+        ( $sec, $min ) = localtime $time{'packet'};
+        $sec += ONE_MINUTE * $min;
+        $data{$key}->{'s_time'} = $time{'packet'} - $sec;
 
-		$data{$key}->{'bytes'} += $p->{'ip'}->{'len'};
-		$data{$key}->{'ppf'} += $p->{'nf'}->{'ppf'};
-		$data{$key}->{'bpp'} += $p->{'nf'}->{'bpp'};
-		$data{$key}->{'bps'} += $p->{'nf'}->{'bps'};
-		$data{$key}->{'pps'} += $p->{'nf'}->{'pps'};
-		$data{$key}->{'flows'} += $p->{'nf'}->{'flows'};
-		$data{$key}->{'duration'} += $p->{'nf'}->{'duration'};
+        $data{$key}->{'bytes'}    += $p->{'ip'}->{'len'};
+        $data{$key}->{'ppf'}      += $p->{'nf'}->{'ppf'};
+        $data{$key}->{'bpp'}      += $p->{'nf'}->{'bpp'};
+        $data{$key}->{'bps'}      += $p->{'nf'}->{'bps'};
+        $data{$key}->{'pps'}      += $p->{'nf'}->{'pps'};
+        $data{$key}->{'flows'}    += $p->{'nf'}->{'flows'};
+        $data{$key}->{'duration'} += $p->{'nf'}->{'duration'};
 
         # Открываем файл к которому
         #   относится текущий интервал времени
@@ -163,7 +165,7 @@ sub main {
                 $data{$key}->{'src_port'},
                 &PPNF::toDotQuad( $data{$key}->{'dst'} ),
                 $data{$key}->{'dst_port'},
-            	$data{$key}->{'flows'},
+                $data{$key}->{'flows'},
                 $data{$key}->{'ppf'},
                 sprintf( "%.2f", $data{$key}->{'bpp'} ),
                 sprintf( "%.2f", $data{$key}->{'bps'} ) )
@@ -201,8 +203,9 @@ sub main {
             $line =~ s/\s*//g;
 
             # Получаем поля
-            (   $v{'time'}, $v{'src'}, $v{'srcp'}, $v{'dst'},
-                $v{'dstp'}, $v{'flows'}, $v{'ppf'}, $v{'bpp'},  $v{'bps'}
+            (   $v{'time'}, $v{'src'},  $v{'srcp'},
+                $v{'dst'},  $v{'dstp'}, $v{'flows'},
+                $v{'ppf'},  $v{'bpp'},  $v{'bps'}
             ) = split /\",\"/, $line;
 
             next unless $v{'dstp'} =~ m/\d/;
@@ -213,26 +216,26 @@ sub main {
             # Сохраняем ключи
             unless ( defined $store{'keys_h'}->{$key} ) {
 
-                # Массив ключей необходим для уникального набора
-                # Тем самым исключив повторные ключи
+# Массив ключей необходим для уникального набора
+# Тем самым исключив повторные ключи
                 push @{ $store{'keys_a'} }, $key;
 
-                # Хеш необходим что бы записать полный набор ключей
+# Хеш необходим что бы записать полный набор ключей
                 $store{'keys_h'}->{$key} = 1;
             }
-            
-            # О каждом потоке собираем информацию
-            # Адрес источника, адрес и порт назначения
+
+  # О каждом потоке собираем информацию
+  # Адрес источника, адрес и порт назначения
             $data{$key}->{'src'}  = $v{'src'};
             $data{$key}->{'dst'}  = $v{'dst'};
             $data{$key}->{'dstp'} = $v{'dstp'};
 
-            # Информацию о критериях потока агрегируем в массив
+# Информацию о критериях потока агрегируем в массив
             push @{ $data{$key}->{'ppf'} }, $v{'ppf'};
             push @{ $data{$key}->{'bpp'} }, $v{'bpp'};
             push @{ $data{$key}->{'bps'} }, $v{'bps'};
 
-            # Подсчитываем количество схожих потоков в интервале времени
+# Подсчитываем количество схожих потоков в интервале времени
             if ( $data{$key}->{'fph'}->{ $v{'time'} } ) {
                 $data{$key}->{'fph'}->{ $v{'time'} } += $v{'flows'};
             }
@@ -247,15 +250,16 @@ sub main {
         # Обрабатываем посчитанные данные
         open $fh, '>>', $OUT or die $!;
 
-        # Если итерация первая, добавим заголовки
-		unless ( $j ) {
-	        print $fh join ',', map { qq{"$_"} } qw/src_ip dst_ip dst_port fph ppf bpp bps/;
-	        print $fh "\n";
-    	}
+   # Если итерация первая, добавим заголовки
+        unless ($j) {
+            print $fh join ',',
+                map {qq{"$_"}} qw/src_ip dst_ip dst_port fph ppf bpp bps/;
+            print $fh "\n";
+        }
 
         while ( $key = shift @{ $store{'keys_a'} } ) {
 
-            # Достаем информацию об агрегированных потоках
+# Достаем информацию об агрегированных потоках
             (   $v{'fph'}, $v{'src'}, $v{'dst'}, $v{'dstp'},
                 $v{'ppf'}, $v{'bpp'}, $v{'bps'}
             ) = @{ $data{$key} }{qw/fph src dst dstp ppf bpp bps/};
@@ -292,7 +296,7 @@ sub main {
 }
 
 sub get_path {
-    return $FILE_DIR . '/' . (shift) . $FILE_EXT;
+    return $FILE_DIR . '/' . (shift) . $PREFIX. $FILE_EXT;
 }
 
 &main();

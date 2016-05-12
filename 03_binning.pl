@@ -16,7 +16,8 @@ my $args = {@ARGV};
 # my $pct_range = [ 30, 60, 90 ]; # 4
 # my $pct_range = [ 16, 33, 50, 66, 83 ]; # 6
 # my $pct_range = [ 12, 25, 37, 50, 62, 75, 87 ]; # 8
-my $pct_range = [ 10, 20, 30, 40, 50, 60, 70, 80, 90 ]; # 10
+# my $pct_range = [ 10, 20, 30, 40, 50, 60, 70, 80, 90 ]; # 10
+my $pct_range = [ 5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90 ]; # 24
 
 my $FILE_IN = $args->{'--file'} || 'vector.csv';
 my $FILE_OUT = $args->{'--out'} || '/tmp/binning.csv';
