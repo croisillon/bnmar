@@ -24,7 +24,7 @@ my $PCAP_IN       = $args->{'--file'}         || 'nf_traffic.txt';
 my $TIME_INTERVAL = $args->{'--interval'}     || 1;
 my $FILE_DIR      = $args->{'--tmpdir'}       || '/tmp';
 my $OUT           = $args->{'--out'}          || '/tmp/agregate.csv';
-my $CLEAN         = exists $args->{'--clean'} || 0;
+my $CLEAN         = exists $args->{'--clean'} || 1;
 my $FILE_EXT      = '.csv';
 my $NEW_INTERVAL    = 0;
 my $COUNT         = 0;
@@ -34,7 +34,7 @@ sub main {
     my ( %header, %time,   %data,   %store, %v, @files, @fph );
     my ( $key, $min, $sec, $flags, $file, $fh );
 
-    unlink glob &get_path('*') if $CLEAN;
+    unlink glob &get_path('*.nfag') if $CLEAN;
 
     open $pcap, '<', $PCAP_IN or die $PCAP_IN.' ('.$!.')';
 
@@ -79,7 +79,8 @@ sub main {
             $file
                 = $COUNT . '_'
                 . $time{'start'}->hour . '-'
-                . $time{'finish'}->hour;
+                . $time{'finish'}->hour
+                . '.nfag';
 
             $min = $TIME_INTERVAL;
             $sec = $time{'start'};
