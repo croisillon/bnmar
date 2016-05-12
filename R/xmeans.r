@@ -35,7 +35,7 @@ table_df <- data.frame(src=table$src_ip,dst=table$dst_ip,port=table$dst_port,fph
 
 print(summary)
 
-write.table(table_df, file = "xmeans_clustering.csv", sep = ",", col.names = NA, qmethod = "double")
-write.table(summary, file = "xmeans_summary.csv", sep = ",", col.names = NA, qmethod = "double")
+write.table(table_df, file = "xmeans_clustering.csv", sep = ";", col.names = NA, qmethod = "double")
+write.table(summary, file = "xmeans_summary.csv", sep = ";", col.names = NA, qmethod = "double")
 
 print('Done...')

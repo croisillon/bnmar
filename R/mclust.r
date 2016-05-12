@@ -20,7 +20,7 @@ df <- as.matrix(df)
 emcl = Mclust(df)
 table_df <- data.frame(src=table$src_ip,dst=table$dst_ip,port=table$dst_port,fph=table$fph,ppf=table$ppf,bpp=table$bpp,bps=table$bps,cluster_id=emcl$classification)
 
-write.table(table_df, file = "em_clustering.csv", sep = ",", col.names = NA, qmethod = "double")
+write.table(table_df, file = "em_clustering.csv", sep = ";", col.names = NA, qmethod = "double")
 write.table(summary(emcl), file = "em_summary.txt")
 print("Done...")
 # print(summary(emcl))

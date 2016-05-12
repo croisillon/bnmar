@@ -198,14 +198,14 @@ sub main {
 
                 # Добавим заголовок
                 if ( -z &get_path($file) ) {
-                    print $fh join( ",",
+                    print $fh join( ";",
                         qw/time src_ip src_port dst_ip dst_port ppf bpp bps/ )
                         . "\n";
                 }
 
                 print $fh "\""
                     . (
-                    join( "\", \"",
+                    join( "\"; \"",
                         $data{$key}->{'s_time'}->hms,
                         &PP::toDotQuad( $data{$key}->{'src'} ),
                         $data{$key}->{'src_port'},
@@ -262,7 +262,7 @@ sub main {
             # Получаем поля
             (   $v{'time'}, $v{'src'}, $v{'srcp'}, $v{'dst'},
                 $v{'dstp'}, $v{'ppf'}, $v{'bpp'},  $v{'bps'}
-            ) = split /\",\"/, $line;
+            ) = split /\";\"/, $line;
 
             # Ключ из ip_src + ip_dst + port_dst
             $key = $v{'src'} . $v{'dst'} . $v{'dstp'};
@@ -303,7 +303,7 @@ sub main {
 
         # Обрабатываем посчитанные данные
         open $fh, '>>', $OUT or die $!;
-        print $fh join ',', map { qq{"$_"} } qw/src_ip dst_ip dst_port fph ppf bpp bps/;
+        print $fh join ';', map { qq{"$_"} } qw/src_ip dst_ip dst_port fph ppf bpp bps/;
         print $fh "\n";
 
         while ( $key = shift @{ $store{'keys_a'} } ) {
@@ -324,7 +324,7 @@ sub main {
             $v{'bps'} = join ',', @{ $v{'bps'} };
             $v{'fph'} = join ',', @fph;
 
-            print $fh join ',',
+            print $fh join ';',
                 map {qq{"$_"}} @{ \%v }{qw/src dst dstp fph ppf bpp bps/};
 
             print $fh "\n";

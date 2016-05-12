@@ -20,7 +20,7 @@ dx <- dbscan(df, 1.5, MinPts=4, seed=F)
 
 table_df <- data.frame(src=table$src_ip,dst=table$dst_ip,port=table$dst_port,fph=table$fph,ppf=table$ppf,bpp=table$bpp,bps=table$bps,cluster_id=dx$cluster)
 
-write.table(table_df, file = "dbscan_clustering.csv", sep = ",", col.names = NA, qmethod = "double")
+write.table(table_df, file = "dbscan_clustering.csv", sep = ";", col.names = NA, qmethod = "double")
 
 print(dx)
 # pairs(df, col = dx$cluster + 1L)

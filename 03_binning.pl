@@ -7,20 +7,39 @@ use Time::Seconds;
 use Data::Dumper;
 use feature ':5.10';
 use PDL;
+use Getopt::Long 'HelpMessage';
 
 select STDOUT;
 $| = 1;
 
-my $args = {@ARGV};
-# my $pct_range = [ 50 ]; # 2
-# my $pct_range = [ 30, 60, 90 ]; # 4
-# my $pct_range = [ 16, 33, 50, 66, 83 ]; # 6
-# my $pct_range = [ 12, 25, 37, 50, 62, 75, 87 ]; # 8
-# my $pct_range = [ 10, 20, 30, 40, 50, 60, 70, 80, 90 ]; # 10
-my $pct_range = [ 5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90 ]; # 24
+my ($FILE_IN, $FILE_OUT, $PCT_INTERVAL, $PCT_RANGE);
 
-my $FILE_IN = $args->{'--file'} || 'vector.csv';
-my $FILE_OUT = $args->{'--out'} || '/tmp/binning.csv';
+GetOptions( 
+    'file=s' => \$FILE_IN,
+    'out=s' => \$FILE_OUT,
+    'interval=i' => \$PCT_INTERVAL,
+    'range=s{,}' => \$PCT_RANGE
+)  or die "Invalid options passed to $0\n";
+
+die "$0 requires the input filename argument (--file)\n" unless $FILE_IN;
+die "$0 requires the output filename argument (--out)\n" unless $FILE_OUT;
+
+my %PCT_RANGE_INTERVALS = (
+    '2' => [ 50 ],
+    '4' => [ 30, 60, 90 ],
+    '6' => [ 16, 33, 50, 66, 83 ], 
+    '8' => [ 12, 25, 37, 50, 62, 75, 87 ], 
+    '10' => [ 10, 20, 30, 40, 50, 60, 70, 80, 90 ]
+);
+
+my $pct_range = [ 5, 10, 15, 20, 25, 30, 40, 50, 60, 70, 80, 90 ];
+
+if ( $PCT_RANGE ) {
+    $pct_range = [];
+    for ( split ',', $PCT_RANGE ) { push @$pct_range, ($_ + 0); }
+} elsif ( $PCT_INTERVAL && exists $PCT_RANGE_INTERVALS{ $PCT_INTERVAL } ) {
+    $pct_range = $PCT_RANGE_INTERVALS{ $PCT_INTERVAL };
+}
 
 sub main {
     my ( $line, $key, $i, $j, $file, $fh, $len );
@@ -42,7 +61,7 @@ sub main {
 
         (   $vars{'src'}, $vars{'dst'}, $vars{'dstp'}, $vars{'fph'},
             $vars{'ppf'}, $vars{'bpp'}, $vars{'bps'}
-        ) = split /\",\"/, $line;
+        ) = split /\";\"/, $line;
 
         $key = join '', @{ \%vars }{qw/src dst dstp/};
         $key =~ s/\D//g;

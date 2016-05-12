@@ -36,6 +36,7 @@ sub main {
     my ( $key, $min, $sec, $flags, $file, $fh );
 
     unlink glob &get_path('*') if $CLEAN;
+    unlink $args->{'--out'};
 
     open $pcap, '<', $PCAP_IN or die $PCAP_IN . ' (' . $! . ')';
 
@@ -152,14 +153,14 @@ sub main {
 
         # Добавим заголовок
         if ( -z &get_path($file) ) {
-            print $fh join( ",",
+            print $fh join( ";",
                 qw/time src_ip src_port dst_ip dst_port flows ppf bpp bps/ )
                 . "\n";
         }
 
         print $fh "\""
             . (
-            join( "\", \"",
+            join( "\"; \"",
                 $data{$key}->{'s_time'}->hms,
                 &PPNF::toDotQuad( $data{$key}->{'src'} ),
                 $data{$key}->{'src_port'},
@@ -206,7 +207,7 @@ sub main {
             (   $v{'time'}, $v{'src'},  $v{'srcp'},
                 $v{'dst'},  $v{'dstp'}, $v{'flows'},
                 $v{'ppf'},  $v{'bpp'},  $v{'bps'}
-            ) = split /\",\"/, $line;
+            ) = split /\";\"/, $line;
 
             next unless $v{'dstp'} =~ m/\d/;
 
@@ -252,7 +253,7 @@ sub main {
 
    # Если итерация первая, добавим заголовки
         unless ($j) {
-            print $fh join ',',
+            print $fh join ';',
                 map {qq{"$_"}} qw/src_ip dst_ip dst_port fph ppf bpp bps/;
             print $fh "\n";
         }
@@ -275,7 +276,7 @@ sub main {
             $v{'bps'} = join ',', @{ $v{'bps'} };
             $v{'fph'} = join ',', @fph;
 
-            print $fh join ',',
+            print $fh join ';',
                 map {qq{"$_"}} @{ \%v }{qw/src dst dstp fph ppf bpp bps/};
 
             print $fh "\n";
