@@ -8,25 +8,31 @@ use IO::File;
 use File::Spec;
 use Data::Dumper;
 
-my ( $in, $dir, $column, $clean );
+my ( $file, $dir, $column, $clean, $acolumn );
 
 GetOptions(
-    'in=s'     => \$in,
-    'dir=s'    => \$dir,
-    'column=i' => \$column,
-    'help'     => sub { HelpMessage(0) }
+    'file=s'    => \$file,
+    'dir=s'     => \$dir,
+    'column=i'  => \$column,
+    'acolumn=i' => \$acolumn,
+    'help'      => sub { HelpMessage(0) }
 ) or HelpMessage(1);
+
+die "$0 requires the input file argument (--file)\n"      unless $file;
+die "$0 requires the column number argument (--column)\n" unless $column;
+die "$0 requires the agregate column number argument (--acolumn)\n"
+    unless $acolumn;
+
+$dir = '/tmp' unless $dir;
 
 unlink glob File::Spec->catfile( $dir, '*.csv' );
 
-open FH, '<', $in or die $!;
+open FH, '<', $file or die $!;
 
 my ( @rows, $row, $line, $copy, $fh, $i, $headline );
-my ( %pages, %voc );
+my ( %pages, %voc, $key );
 
 $headline = readline(FH);
-# chomp $headline;
-# $headline = $headline . qq{;"name";"count";"percent"\n};
 
 while ( $line = <FH> ) {
 
@@ -34,10 +40,11 @@ while ( $line = <FH> ) {
     chomp $line;
 
     # Parse .csv file
-    $line =~ s/\s*//g;
+    $line =~ s/"|\s//g;
 
     @rows = split ';', $line;
     $row = $rows[$column];
+    $key = $rows[ $acolumn ];
 
     $pages{$row} ||= 0;
     $fh = IO::File->new(
@@ -50,8 +57,8 @@ while ( $line = <FH> ) {
     print $fh $copy;
     ++$pages{$row};
 
-    $voc{$row}->{ $rows[10] } ||= 0;
-    ++$voc{$row}->{ $rows[10] };
+    $voc{$row}->{$key} ||= 0;
+    ++$voc{$row}->{$key};
 
     undef $fh;
 
@@ -84,4 +91,10 @@ for $i (@clust) {
     unlink $sum, $freq;
 }
 
-# ./split_agreagte.pl --in xmeans_clustering.csv --column 7 --dir /tmp
+
+# Split clustering file without whois information
+# ./split_agreagte.pl --file 05/249/clustering/xmeans/int10.csv --column 8 --acolumn 2 --dir 05/249/clustering/
+# 
+# Split clustering file with whois information
+# ./split_agreagte.pl --file 05/249/clustering/xmeans/int10.csv --column 8 --acolumn 10 --dir 05/249/clustering/
+
