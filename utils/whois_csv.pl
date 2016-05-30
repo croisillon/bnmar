@@ -9,7 +9,7 @@ use Getopt::Long 'HelpMessage';
 $| = 1;
 
 my ( $in, $out, $column, $nodb, $headline );
-
+my $VERBOSE = 1;
 $column = undef;
 GetOptions(
     'in=s'     => \$in,
@@ -49,7 +49,7 @@ sub read_db_in_cache {
 
     ( !-e $whois_db ) && return;
 
-    open FH, '<', './whois.db' or die $!;
+    open FH, '<', $whois_db or die $!;
 
     while ( $str = <FH> ) {
 
@@ -70,7 +70,7 @@ sub write_db_from_cache {
     my $cache = shift;
     my ( @keys, $ws, $rs );
 
-    open FH, '>', './whois.db' or die $!;
+    open FH, '>', $whois_db or die $!;
 
     @keys = keys %$cache;
     for (@keys) {
@@ -91,7 +91,7 @@ sub write_db_from_cache {
 # INIT
 my ( %cache, $resolver, $ifh, $ofh );
 
-if (!$nodb) {
+if ( !$nodb ) {
     say 'Reading database to cache...';
     &read_db_in_cache( \%cache );
 }
@@ -105,34 +105,27 @@ open $ofh, '>', $out or die $!;
 # MAIN
 my ( $status, $line, $copy, $ip, $i, @rows, $reply );
 
+if ($headline) {
+    $headline = readline($ifh);
+    chomp $headline;
+    say $ofh $headline . ';"resolv";"whois"';
+}
+
 $i = 0;
 while ( $line = <$ifh> ) {
+    chomp $line;
 
     $copy = $line;
 
-    # Drop headline to output file
-    if ($headline) {
-        unless ($i) {
-            $line =~ s/\n//;
-
-            say $ofh $line . ',"resolv", "whois"';
-
-            $i = 1;
-            next;
-        }
-    }
-
     # Parse .csv file
-    $line =~ s/\n$//;
-    $line =~ s/^\"|\"$//g;
-    $line =~ s/\s*//g;
+    $line =~ s/"//g;
 
-    @rows = split /\",(?:\")?/, $line;
+    @rows = split ';', $line;
 
     $ip = $rows[ $column - 1 ];
 
-    print sprintf( "Lookup: %-16s ", $ip );
-    
+    print sprintf( "Lookup: %-16s ", $ip ) if $VERBOSE;
+
     if ( !$nodb && $cache{$ip} ) {
         $status = '[CACHE]';
     }
@@ -160,12 +153,10 @@ while ( $line = <$ifh> ) {
         $status,
         $cache{$ip}->{'whois'},
         $cache{$ip}->{'resolv'}
-    );
-
-    $copy =~ s/\n$//;
+    ) if $VERBOSE;
 
     print $ofh
-        join( ',', $copy, $cache{$ip}->{'resolv'}, $cache{$ip}->{'whois'} )
+        join( ';', $copy, $cache{$ip}->{'resolv'}, q{"}.$cache{$ip}->{'whois'}.q{"} )
         . "\n";
 
 }
