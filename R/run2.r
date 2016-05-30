@@ -8,8 +8,7 @@ require(RWeka)
 require(mclust)
 require(fpc)
 
-WORK_DIR <- '/media/denis/WD/con/dm/05/249/'
-# args[1]
+WORK_DIR <- args[1]
 INPUT_DIR <- 'binning'
 OUTPUT_DIR <- 'clustering'
 
