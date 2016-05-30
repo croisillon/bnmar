@@ -24,27 +24,24 @@ open FH, '<', $in or die $!;
 my ( @rows, $row, $line, $copy, $fh, $i, $headline );
 my ( %pages, %voc );
 
-$i = 0;
+$headline = readline(FH);
+# chomp $headline;
+# $headline = $headline . qq{;"name";"count";"percent"\n};
+
 while ( $line = <FH> ) {
 
     $copy = $line;
-
-    unless ($i) {
-        $headline = $line;
-        $i        = 1;
-        next;
-    }
+    chomp $line;
 
     # Parse .csv file
-    $line =~ s/\n$//;
-    $line =~ s/^\"|\"$//g;
     $line =~ s/\s*//g;
 
-    @rows = split /\",(?:\")?/, $line;
+    @rows = split ';', $line;
     $row = $rows[$column];
 
     $pages{$row} ||= 0;
-    $fh = IO::File->new( '>> ' . File::Spec->catfile( $dir, "$row-sum.csv" ) );
+    $fh = IO::File->new(
+        '>> ' . File::Spec->catfile( $dir, "$row-sum.csv" ) );
 
     unless ( $pages{$row} ) {
         print $fh $headline;
@@ -53,37 +50,38 @@ while ( $line = <FH> ) {
     print $fh $copy;
     ++$pages{$row};
 
-    $voc{$row}->{ $rows[2] } ||= 0;
-    ++$voc{$row}->{ $rows[2] };
+    $voc{$row}->{ $rows[10] } ||= 0;
+    ++$voc{$row}->{ $rows[10] };
 
     undef $fh;
 
 }
 
 my @clust = keys %voc;
-my ($sum, @keys, $freq, $clust, $command);
-for $i ( @clust ) {
+my ( $sum, @keys, $freq, $clust, $command );
+for $i (@clust) {
 
-	@keys = keys $voc{$i};
+    @keys = keys $voc{$i};
 
-	$sum = 0;
-	for ( @keys ) {
-		$sum += $voc{$i}->{$_};
-	}
+    $sum = 0;
+    for (@keys) {
+        $sum += $voc{$i}->{$_};
+    }
 
-	$fh = IO::File->new( '>> ' . File::Spec->catfile( $dir, "$i-freq.csv" ) );
-	for ( @keys ) {
-		say $fh sprintf("%s\t%d\t%.2f%%",$_, $voc{$i}->{$_}, (($voc{$i}->{$_}) / $sum) * 100);
-	}
-	undef $fh;
+    $fh = IO::File->new( '>> ' . File::Spec->catfile( $dir, "$i-freq.csv" ) );
+    for (@keys) {
+        say $fh sprintf( "%s\t%d\t%.2f%%",
+            $_, $voc{$i}->{$_}, ( ( $voc{$i}->{$_} ) / $sum ) * 100 );
+    }
+    undef $fh;
 
-	$sum = File::Spec->catfile( $dir, "$i-sum.csv" );
-	$freq = File::Spec->catfile( $dir, "$i-freq.csv" );
-	$clust = File::Spec->catfile( $dir, "$i-clust.csv" );
+    $sum   = File::Spec->catfile( $dir, "$i-sum.csv" );
+    $freq  = File::Spec->catfile( $dir, "$i-freq.csv" );
+    $clust = File::Spec->catfile( $dir, "$i-clust.csv" );
 
-	$command = "paste $sum $freq > $clust";
-	system $command;
-	unlink $sum, $freq;
+    $command = "paste $sum $freq > $clust";
+    system $command;
+    unlink $sum, $freq;
 }
 
 # ./split_agreagte.pl --in xmeans_clustering.csv --column 7 --dir /tmp
