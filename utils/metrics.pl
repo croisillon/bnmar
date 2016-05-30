@@ -45,6 +45,8 @@ close $fh;
 
 $max  = 0;
 @keys = keys %clusters;
+
+
 for (@keys) {
 
     # Количество ботов равно нулю
@@ -93,11 +95,18 @@ $metrics{'recall'}    = $metrics{'TP'} / ( $metrics{'TP'} + $metrics{'FN'} );
 $metrics{'f_measure'} = ( 2 * $metrics{'precision'} * $metrics{'recall'} )
     / ( $metrics{'recall'} + $metrics{'precision'} );
 
+say sprintf(
+    "Lines in file: %d\tBot's traffic: %d\n",
+    $result{'counter_lines'},
+    $result{'counter_bots'}
+);
+say sprintf( "Count elements: %d\t Count bot: %d\n",
+    $result{'elements'}, $result{'bot'} );
 say sprintf( "True Positive: %d\tTrue Negative: %d",
     $metrics{'TP'}, $metrics{'TN'} );
-say sprintf( "False Positive: %d\tFalse Negative: %d",
+say sprintf( "False Positive: %d\tFalse Negative: %d\n",
     $metrics{'FP'}, $metrics{'FN'} );
-say sprintf( "\nPrecision: %.4f\tRecall: %.4f\t\nF-measure: %.4f",
+say sprintf( "Precision: %.4f\tRecall: %.4f\t\nF-measure: %.4f",
     $metrics{'precision'}, $metrics{'recall'}, $metrics{'f_measure'} );
 
 sub parse_csv_line {
