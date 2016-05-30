@@ -14,20 +14,22 @@ GetOptions(
 	'skip=i' => \$skip
 ) or HelpMessage(1);
 
+sub _skipped ($) { say "$_[0] has been skipped"; }
+
 my ($command, $script, $out, $input, $step_name);
 ##### ---------- STEP 1 ---------- #####
 $step_name = '01 - Filtering';
 $script = '01_netflow_filter.pl';
 $script = catfile($Bin, $script);
 $out = catfile($outdir, 'filtered.txt');
-$command = qq{$script --file $file --out $out};
 unless ( $skip ) {
+	$command = qq{$script --file $file --out $out};
 	say $step_name;
 	say $command;
 	$input = $out;
 	system $command;
 } else {
-	say "$step_name has been skipped";
+	_skipped $step_name;
 	--$skip;
 }
 
@@ -56,7 +58,7 @@ unless ( $skip ) {
 		push @agregation, [ $interval, $out];
 	}
 } else {
-	say "$step_name has been skipped";
+	_skipped $step_name;
 	--$skip;
 }
 
@@ -81,7 +83,7 @@ unless ( $skip ) {
 		system $command;
 	}
 } else {
-	say "$step_name has been skipped";
+	_skipped $step_name;
 	--$skip;
 }
 
@@ -90,7 +92,14 @@ my $inter = '/usr/bin/Rscript';
 $step_name = "04 - Clustering";
 $script = 'run2.r';
 $script = catfile($Bin, 'R', $script);
-$command = qq{$inter $script $outdir};
-say $step_name;
-# say $command;
-system $command;
+
+unless ( $skip ) {
+	$command = qq{$inter $script $outdir};
+	say $step_name;
+	system $command;
+} else {
+	_skipped $step_name;
+	--$skip;
+}
+
+say 'Done!';
