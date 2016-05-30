@@ -8,16 +8,16 @@ require(RWeka)
 require(mclust)
 require(fpc)
 
-WORK_DIR <- args[1]
+WORK_DIR <- '/media/denis/WD/con/dm/05/249/'
+# args[1]
 INPUT_DIR <- 'binning'
 OUTPUT_DIR <- 'custering'
 
-CATALOGS <- c( 249 )
 INTERVALS <- c( 2, 4, 6, 8, 10, 24 )
 ALGORITHMS <- c( 'xmeans', 'dbscan', 'em' )
 
-INPUT_DIR <- paste( WORK_DIR, INPUT_DIR, sep='' );
-OUTPUT_DIR <- paste( WORK_DIR, OUTPUT_DIR, sep='' );
+INPUT_DIR <- file.path( WORK_DIR, INPUT_DIR );
+OUTPUT_DIR <- file.path( WORK_DIR, OUTPUT_DIR );
 
 SUBS <- new.env( hash = TRUE, parent = emptyenv(), size = length( ALGORITHMS ) )
 
@@ -36,6 +36,24 @@ sub_split_criteria <- function ( str, nrow ) {
 	return(ret)
 }
 
+sub_read_csv <- function ( file_name ) {
+	ret <- read.csv( file_name, header=T, sep=";", stringsAsFactors=F );
+	return(ret)
+}
+
+sub_create_structure <- function ( table, key ) {
+	interval <- sub_interval_length( table[[ key ]][1] )
+
+	fph <- sub_split_criteria( table[4], interval )
+	ppf <- sub_split_criteria( table[5], interval )
+	bpp <- sub_split_criteria( table[6], interval )
+	bps <- sub_split_criteria( table[7], interval )
+
+	df <- data.frame(fph=fph, ppf=ppf, bpp=bpp, bps=bps)
+
+	return(df)
+}
+
 SUBS[[ 'xmeans' ]] <- function ( input_dir, output_dir, file_name ) {
 
 	if ( !INSTALLED_XMEANS && require('RWeka') ) {
@@ -48,19 +66,12 @@ SUBS[[ 'xmeans' ]] <- function ( input_dir, output_dir, file_name ) {
 	print(msg)
 
 	dir.create( output_dir, showWarnings=FALSE, recursive=TRUE,  mode='755' )
-	input_file_name <- paste( input_dir, file_name, sep="/" )
-	output_file_name <- paste( output_dir, file_name, sep="/" )
+	input_file_name <- file.path( input_dir, file_name )
+	output_file_name <- file.path( output_dir, file_name )
 
-	table <- read.csv( input_file_name, header=T, sep=";", stringsAsFactors=F )
+	table <- sub_read_csv( input_file_name )
 
-	interval <- sub_interval_length( table$fph[1] )
-
-	fph <- sub_split_criteria( table[4], interval )
-	ppf <- sub_split_criteria( table[5], interval )
-	bpp <- sub_split_criteria( table[6], interval )
-	bps <- sub_split_criteria( table[7], interval )
-
-	xmdf <- data.frame(fph=fph, ppf=ppf, bpp=bpp, bps=bps)
+	xmdf <- sub_create_structure( table, c('fph') )
 
 	xmclust <- XMeans(xmdf, c("-L", 10, "-H", 100, "-use-kdtree", "-K", "weka.core.neighboursearch.KDTree -P"))
 
@@ -68,7 +79,7 @@ SUBS[[ 'xmeans' ]] <- function ( input_dir, output_dir, file_name ) {
 
 	write.table(xmtable, file = output_file_name, sep = ";", col.names = NA, qmethod = "double")
 
-	rm(table, interval, fph, ppf, bpp, bps, xmdf, xmclust, xmtable)
+	rm(table, xmdf, xmclust, xmtable)
 }
 
 SUBS[[ 'dbscan' ]] <- function ( input_dir, output_dir, file_name ) {
@@ -76,19 +87,12 @@ SUBS[[ 'dbscan' ]] <- function ( input_dir, output_dir, file_name ) {
 	print(msg)
 
 	dir.create( output_dir, showWarnings=FALSE, recursive=TRUE,  mode='755' )
-	input_file_name <- paste( input_dir, file_name, sep="/" )
-	output_file_name <- paste( output_dir, file_name, sep="/" )
+	input_file_name <- file.path( input_dir, file_name )
+	output_file_name <- file.path( output_dir, file_name )
 
-	table <- read.csv( input_file_name, header=T, sep=";", stringsAsFactors=F )
+	table <- sub_read_csv( input_file_name )
 
-	interval <- sub_interval_length( table$fph[1] )
-
-	fph <- sub_split_criteria( table[4], interval )
-	ppf <- sub_split_criteria( table[5], interval )
-	bpp <- sub_split_criteria( table[6], interval )
-	bps <- sub_split_criteria( table[7], interval )
-
-	dbmx <- as.matrix(data.frame(fph=fph, ppf=ppf, bpp=bpp, bps=bps))
+	dbmx <- as.matrix( sub_create_structure( table, c('fph') ) )
 
 	dbclust <- dbscan(dbmx, 1.5, MinPts=4, seed=F)
 
@@ -96,7 +100,7 @@ SUBS[[ 'dbscan' ]] <- function ( input_dir, output_dir, file_name ) {
 
 	write.table(dbtable, file = output_file_name, sep = ";", col.names = NA, qmethod = "double")
 
-	rm(table, interval, fph, ppf, bpp, bps, dbmx, dbclust, dbtable)
+	rm(table, dbmx, dbclust, dbtable)
 }
 
 SUBS[[ 'em' ]] <- function ( input_dir, output_dir, file_name ) {
@@ -104,19 +108,12 @@ SUBS[[ 'em' ]] <- function ( input_dir, output_dir, file_name ) {
 	print(msg)
 
 	dir.create( output_dir, showWarnings=FALSE, recursive=TRUE,  mode='755' )
-	input_file_name <- paste( input_dir, file_name, sep="/" )
-	output_file_name <- paste( output_dir, file_name, sep="/" )
+	input_file_name <- file.path( input_dir, file_name )
+	output_file_name <- file.path( output_dir, file_name )
 
-	table <- read.csv( input_file_name, header=T, sep=";", stringsAsFactors=F )
+	table <- sub_read_csv( input_file_name )
 
-	interval <- sub_interval_length( table$fph[1] )
-
-	fph <- sub_split_criteria( table[4], interval )
-	ppf <- sub_split_criteria( table[5], interval )
-	bpp <- sub_split_criteria( table[6], interval )
-	bps <- sub_split_criteria( table[7], interval )
-
-	emmx <- as.matrix(data.frame(fph=fph, ppf=ppf, bpp=bpp, bps=bps))
+	emmx <- as.matrix( sub_create_structure( table, c('fph') ) )
 	
 	emclust <- Mclust(emmx)
 
@@ -127,13 +124,11 @@ SUBS[[ 'em' ]] <- function ( input_dir, output_dir, file_name ) {
 
 
 for ( alg in ALGORITHMS ) {
-	for ( dir in CATALOGS ) {
-		for ( interval in INTERVALS ) {
-			file_name <- paste( 'int', interval, '.csv', sep='' )
-			output_dir <- paste( OUTPUT_DIR, dir, alg, sep='/' )
-			input_dir <- paste( INPUT_DIR, dir, sep='/')
+	for ( interval in INTERVALS ) {
 
-			SUBS[[ alg ]]( input_dir, output_dir, file_name )
-		}
+		file_name <- paste( 'int', interval, '.csv', sep='' )
+		output_dir <- file.path( OUTPUT_DIR, alg, sep='/' )
+
+		SUBS[[ alg ]]( INPUT_DIR, output_dir, file_name )
 	}
 }
