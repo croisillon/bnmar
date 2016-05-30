@@ -11,7 +11,7 @@ require(fpc)
 WORK_DIR <- '/media/denis/WD/con/dm/05/249/'
 # args[1]
 INPUT_DIR <- 'binning'
-OUTPUT_DIR <- 'custering'
+OUTPUT_DIR <- 'clustering'
 
 INTERVALS <- c( 2, 4, 6, 8, 10, 24 )
 ALGORITHMS <- c( 'xmeans', 'dbscan', 'em' )
