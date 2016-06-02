@@ -6,11 +6,15 @@ use feature ':5.10';
 use Getopt::Long 'HelpMessage';
 use Data::Dumper;
 
-my ( $file, $pattern );
+my ( $file, $pattern, $out );
 
-GetOptions( 'file=s' => \$file ) or HelpMessage(1);
+GetOptions( 
+    'file=s' => \$file,
+    'out=s' => \$out,
+) or HelpMessage(1);
 
 die "$0 requires the input filename argument (--file)\n" unless $file;
+die "$0 requires the output filename argument (--out)\n" unless $out;
 
 my $PATTERN = {
     'PORT' => 1731,
@@ -76,39 +80,46 @@ if ( @keys > 1 ) {
 # counter_lines - сумма всех записей
 # counter_bots - сумма всех записей с ботом
 
-$result{'cluster_id'}    = $cluster_id;
-$result{'elements'}      = $clusters{$cluster_id}->{'elements'};
-$result{'bot'}           = $clusters{$cluster_id}->{'bot'};
-$result{'counter_lines'} = $counters{'lines'};
-$result{'counter_bots'}  = $counters{'bot'};
 
-$metrics{'TP'} = $result{'bot'};
-$metrics{'TN'}
-    = $result{'counter_lines'}
-    - $result{'elements'}
-    - ( $result{'counter_bots'} - $result{'bot'} );
-$metrics{'FP'} = $result{'elements'} - $result{'bot'};
-$metrics{'FN'} = $result{'counter_bots'} - $result{'bot'};
+if ( $cluster_id ) {
+    open $fh, '>', $out or die $!;
 
-$metrics{'precision'} = $metrics{'TP'} / ( $metrics{'TP'} + $metrics{'FP'} );
-$metrics{'recall'}    = $metrics{'TP'} / ( $metrics{'TP'} + $metrics{'FN'} );
-$metrics{'f_measure'} = ( 2 * $metrics{'precision'} * $metrics{'recall'} )
-    / ( $metrics{'recall'} + $metrics{'precision'} );
+    $result{'cluster_id'}    = $cluster_id;
+    $result{'elements'}      = $clusters{$cluster_id}->{'elements'};
+    $result{'bot'}           = $clusters{$cluster_id}->{'bot'};
+    $result{'counter_lines'} = $counters{'lines'};
+    $result{'counter_bots'}  = $counters{'bot'};
 
-say sprintf(
-    "Lines in file: %d\tBot's traffic: %d\n",
-    $result{'counter_lines'},
-    $result{'counter_bots'}
-);
-say sprintf( "Cluster id: %d\n", $result{'cluster_id'} );
-say sprintf( "Count elements: %d\t Count bot: %d\n",
-    $result{'elements'}, $result{'bot'} );
-say sprintf( "True Positive: %d\tTrue Negative: %d",
-    $metrics{'TP'}, $metrics{'TN'} );
-say sprintf( "False Positive: %d\tFalse Negative: %d\n",
-    $metrics{'FP'}, $metrics{'FN'} );
-say sprintf( "Precision: %.4f\tRecall: %.4f\t\nF-measure: %.4f",
-    $metrics{'precision'}, $metrics{'recall'}, $metrics{'f_measure'} );
+    $metrics{'TP'} = $result{'bot'};
+    $metrics{'TN'}
+        = $result{'counter_lines'}
+        - $result{'elements'}
+        - ( $result{'counter_bots'} - $result{'bot'} );
+    $metrics{'FP'} = $result{'elements'} - $result{'bot'};
+    $metrics{'FN'} = $result{'counter_bots'} - $result{'bot'};
+
+    $metrics{'precision'} = $metrics{'TP'} / ( $metrics{'TP'} + $metrics{'FP'} );
+    $metrics{'recall'}    = $metrics{'TP'} / ( $metrics{'TP'} + $metrics{'FN'} );
+    $metrics{'f_measure'} = ( 2 * $metrics{'precision'} * $metrics{'recall'} )
+        / ( $metrics{'recall'} + $metrics{'precision'} );
+
+    say $fh sprintf(
+        "Lines in file: %d\tBot's traffic: %d\n",
+        $result{'counter_lines'},
+        $result{'counter_bots'}
+    );
+    say $fh sprintf( "Cluster id: %d\n", $result{'cluster_id'} );
+    say $fh sprintf( "Count elements: %d\t Count bot: %d\n",
+        $result{'elements'}, $result{'bot'} );
+    say $fh sprintf( "True Positive: %d\tTrue Negative: %d",
+        $metrics{'TP'}, $metrics{'TN'} );
+    say $fh sprintf( "False Positive: %d\tFalse Negative: %d\n",
+        $metrics{'FP'}, $metrics{'FN'} );
+    say $fh sprintf( "Precision: %.4f\tRecall: %.4f\t\nF-measure: %.4f",
+        $metrics{'precision'}, $metrics{'recall'}, $metrics{'f_measure'} );
+
+    close $fh;
+}
 
 sub parse_csv_line {
     my $line = shift @_;
