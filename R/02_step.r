@@ -1,13 +1,19 @@
 rm(list=ls())
 
+args<-commandArgs(TRUE)
+
 source('R/functions.r')
 
 require(RWeka)
 
 INSTALLED_XMEANS = 0
 
-INPUT_DIR <- '/media/denis/WD/con/dm/07/249/01_split'
-OUTPUT_DIR <- '/media/denis/WD/con/dm/07/249/02_clustering'
+WORK_DIR <- args[1]
+INPUT_DIR <- '01_split'
+OUTPUT_DIR <- '02_clustering'
+
+INPUT_DIR <- file.path( WORK_DIR, INPUT_DIR );
+OUTPUT_DIR <- file.path( WORK_DIR, OUTPUT_DIR );
 
 sub_xmeans <- function ( input_dir, output_dir, file_name ) {
 
