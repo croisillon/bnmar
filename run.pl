@@ -90,8 +90,9 @@ unless ( $skip ) {
 ##### ---------- STEP 4 ---------- #####
 my $inter = '/usr/bin/Rscript';
 $step_name = "04 - Clustering";
-$script = 'run2.r';
-$script = catfile($Bin, 'R', $script);
+$script = '01_step.r';
+$catalog = 'R';
+$script = catfile($Bin, $catalog, $script);
 
 unless ( $skip ) {
 	$command = qq{$inter $script $outdir};
