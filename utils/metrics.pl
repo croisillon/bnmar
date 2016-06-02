@@ -100,6 +100,7 @@ say sprintf(
     $result{'counter_lines'},
     $result{'counter_bots'}
 );
+say sprintf( "Cluster id: %d\n", $result{'cluster_id'} );
 say sprintf( "Count elements: %d\t Count bot: %d\n",
     $result{'elements'}, $result{'bot'} );
 say sprintf( "True Positive: %d\tTrue Negative: %d",
