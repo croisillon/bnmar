@@ -9,33 +9,38 @@
 # WPM("install-package", "XMeans")
 # WPM("load-package", "XMeans")
 
+source(file='functions.r')
+
 require(RWeka)
 
-rm(list=ls())
+INSTALLED_XMEANS = 0
 
-table <- read.csv('result_binning.csv', header=T, sep=";", stringsAsFactors=F );
+function sub_xmeans ( input_dir, output_dir, file_name ) {
 
-nrow <- length(unlist(strsplit(table$fph[1], ",")))
-apfunc <- function(x) {
-	cc <- as.numeric( unlist(strsplit(x, ",")) )
-	return(cc)
+	if ( !INSTALLED_XMEANS && require('RWeka') ) {
+		print('Running XMeans installing. This operation can take several minutes...')
+		WPM("install-package", "XMeans")
+		INSTALLED_XMEANS <<- 1;
+	}
+
+	msg <- paste( "Running XMeans algorithm for file: ", file_name, sep='' )
+	print(msg)
+
+	dir.create( output_dir, showWarnings=FALSE, recursive=TRUE,  mode='755' )
+	input_file_name <- file.path( input_dir, file_name )
+	output_file_name <- file.path( output_dir, file_name )
+
+	table <- sub_read_csv( input_file_name )
+
+	xmdf <- sub_create_structure( table, c('fph') )
+
+	xmclust <- XMeans(xmdf, c("-L", 10, "-H", 100, "-use-kdtree", "-K", "weka.core.neighboursearch.KDTree -P"))
+
+	xmtable <- data.frame(src=table$src_ip, dst=table$dst_ip, port=table$dst_port, fph=table$fph, ppf=table$ppf, bpp=table$bpp, bps=table$bps, cluster_id=xmclust$class_ids)
+
+	write.table(xmtable, file = output_file_name, sep = ";", col.names = NA, qmethod = "double")
+	# write.table(summary, file = "xmeans_summary.csv", sep = ";", col.names = NA, qmethod = "double")
+
+	rm(table, xmdf, xmclust, xmtable)
 }
 
-fph <- t(matrix(apply(  table[4], 1, apfunc ), nrow=4))
-ppf <- t(matrix(apply(  table[5], 1, apfunc ), nrow=4))
-bpp <- t(matrix(apply(  table[6], 1, apfunc ), nrow=4))
-bps <- t(matrix(apply(  table[7], 1, apfunc ), nrow=4))
-
-df <- data.frame(fph=fph, ppf=ppf, bpp=bpp, bps=bps)
-
-cl <- XMeans(df, c("-L", 10, "-H", 100, "-use-kdtree", "-K", "weka.core.neighboursearch.KDTree -P"))
-
-summary <- table(predict(cl))
-table_df <- data.frame(src=table$src_ip,dst=table$dst_ip,port=table$dst_port,fph=table$fph,ppf=table$ppf,bpp=table$bpp,bps=table$bps,cluster_id=cl$class_ids)
-
-print(summary)
-
-write.table(table_df, file = "xmeans_clustering.csv", sep = ";", col.names = NA, qmethod = "double")
-write.table(summary, file = "xmeans_summary.csv", sep = ";", col.names = NA, qmethod = "double")
-
-print('Done...')
