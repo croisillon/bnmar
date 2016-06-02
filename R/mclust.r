@@ -1,8 +1,8 @@
-source(file='functions.r')
+source('R/functions.r')
 
 library(mclust)
 
-function sub_em ( input_dir, output_dir, file_name ) {
+sub_em <- function ( input_dir, output_dir, file_name ) {
 	msg <- paste( "Running EM algorithm for file: ", file_name, sep='' )
 	print(msg)
 

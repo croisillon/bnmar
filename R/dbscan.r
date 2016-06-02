@@ -1,8 +1,8 @@
-source(file='functions.r')
+source('R/functions.r')
 
 library(fpc)
 
-function sub_dbscan ( input_dir, output_dir, file_name ) {
+sub_dbscan <- function ( input_dir, output_dir, file_name ) {
 	msg <- paste( "Running DBSCAN algorithm for file: ", file_name, sep='' )
 	print(msg)
 

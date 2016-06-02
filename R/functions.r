@@ -30,3 +30,16 @@ sub_create_structure <- function ( table, key ) {
 
 	return(df)
 }
+
+sub_create_structure_shift <- function ( table, key ) {
+	interval <- sub_interval_length( table[[ key ]][1] )
+
+	fph <- sub_split_criteria( table[5], interval )
+	ppf <- sub_split_criteria( table[6], interval )
+	bpp <- sub_split_criteria( table[7], interval )
+	bps <- sub_split_criteria( table[8], interval )
+
+	df <- data.frame(fph=fph, ppf=ppf, bpp=bpp, bps=bps)
+
+	return(df)
+}

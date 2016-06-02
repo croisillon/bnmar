@@ -9,15 +9,15 @@
 # WPM("install-package", "XMeans")
 # WPM("load-package", "XMeans")
 
-source(file='functions.r')
+source('R/functions.r')
 
 require(RWeka)
 
 INSTALLED_XMEANS = 0
 
-function sub_xmeans ( input_dir, output_dir, file_name ) {
+sub_xmeans <- function ( input_dir, output_dir, file_name ) {
 
-	if ( !INSTALLED_XMEANS && require('RWeka') ) {
+	if ( !interactive() && !INSTALLED_XMEANS && require('RWeka') ) {
 		print('Running XMeans installing. This operation can take several minutes...')
 		WPM("install-package", "XMeans")
 		INSTALLED_XMEANS <<- 1;
