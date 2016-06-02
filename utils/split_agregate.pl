@@ -86,7 +86,8 @@ for $i (@clust) {
     $freq  = File::Spec->catfile( $dir, "$i-freq.csv" );
     $clust = File::Spec->catfile( $dir, "$i-clust.csv" );
 
-    $command = "paste $sum $freq > $clust";
+    # $command = "paste $sum $freq > $clust";
+    $command = "cat $sum > $clust";
     system $command;
     unlink $sum, $freq;
 }
