@@ -335,7 +335,7 @@ sub init_flow {
     $flow->{'_fin_'} = 0;
     $flow->{'_ack_'} = 0;
 
-    $flow->{'flags'} = 'UAPRSF';
+    $flow->{'flags'} = '......';
 
     return $flow;
 }
@@ -434,9 +434,6 @@ sub clear_flow {
 
     my $keys_path = get_path(@direct);
 
-    say Dumper $keys_path;
-
-    say Dumper $store{ $keys_path->{'key'} };
     $store{ $keys_path->{'key'} } = undef;
 
     delete_path(@direct);

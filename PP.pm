@@ -55,9 +55,7 @@ use constant {
     TCP_FLAG_RST => 0x04,
     TCP_FLAG_PSH => 0x08,
     TCP_FLAG_ACK => 0x10,
-    TCP_FLAG_URG => 0x20,
-    TCP_FLAG_ECE => 0x40,
-    TCP_FLAG_CWR => 0x80,
+    TCP_FLAG_URG => 0x20
 };
 
 our @EXPORT = qw(
@@ -101,7 +99,7 @@ sub parse_packet {
         ip     => $ip,
         tcp    => $tcp,
         hdr    => $header,
-        source => $packet
+        # source => $packet
     };
 
 }
