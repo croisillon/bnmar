@@ -1,6 +1,7 @@
 package PP;
 
 use strict;
+use Socket;
 
 require v5.18;
 
@@ -64,19 +65,39 @@ our @EXPORT = qw(
     TCP_FLAG_URG TCP_FLAG_ECE TCP_FLAG_CWR
 );
 
-our @EXPORT_OK = qw(parse_packet toDotQuad);
+our @EXPORT_OK = qw(parse_packet toDotQuad parse_netflow);
 
-our %EXPORT_TAGS = (
-    ALL    => [ @EXPORT, @EXPORT_OK ],
-    pparse => [qw(parse_packet toDotQuad)],
-);
 
 sub toDotQuad {
     my ($i) = @_;
-    ( $i >> 24 & 255 ) . '.'
-        . ( $i >> 16 & 255 ) . '.'
-        . ( $i >> 8 & 255 ) . '.'
-        . ( $i & 255 );
+    ( $i >> 24 & 255 ) . '.' . ( $i >> 16 & 255 ) . '.' . ( $i >> 8 & 255 ) . '.' . ( $i & 255 );
+}
+
+sub parse_netflow {
+    my $string = shift;
+    my $header = shift;
+    my $hash;
+
+    $hash = [ split /\s+/, $string ];
+
+    ( $header->{'tv_sec'}, $header->{'tv_usec'} ) = ( split /\./, $hash->[1] );
+    $header->{'tv_sec'}
+        = Time::Piece->strptime( $hash->[0] . ' ' . $header->{'tv_sec'}, "%Y-%m-%d %H:%M:%S" );
+
+    return {
+        'bytes'    => $hash->[10],
+        'packets'  => $hash->[9],
+        'duration' => $hash->[2],
+        'tos'      => $hash->[8],
+        'flags'    => $hash->[7],
+        'proto'    => $hash->[3],
+        'src'      => unpack( "N", inet_aton( [ split ':', $hash->[4] ]->[0] ) ),
+        'dst'      => unpack( "N", inet_aton( [ split ':', $hash->[6] ]->[0] ) ),
+        'src_port' => [ split ':', $hash->[4] ]->[1],
+        'dst_port' => [ split ':', $hash->[6] ]->[1],
+        'hdr'      => $header,
+    };
+
 }
 
 sub parse_packet {
@@ -95,10 +116,11 @@ sub parse_packet {
     $tcp = &parse_tcp_layer($tcp);
 
     return {
-        eth    => $eth,
-        ip     => $ip,
-        tcp    => $tcp,
-        hdr    => $header,
+        eth => $eth,
+        ip  => $ip,
+        tcp => $tcp,
+        hdr => $header,
+
         # source => $packet
     };
 
@@ -112,8 +134,7 @@ sub parse_ethernet_layer {
     $tmpl .= 'A' . BIT_ETHERNET_SOURCE;
     $tmpl .= 'A' . BIT_ETHERNET_TYPE;
 
-    ( $eth{'dst'}, $eth{'src'}, $eth{'type'} )
-        = map { eval "0b$_" } unpack $tmpl, $packet;
+    ( $eth{'dst'}, $eth{'src'}, $eth{'type'} ) = map { eval "0b$_" } unpack $tmpl, $packet;
 
     return \%eth;
 }
@@ -135,10 +156,9 @@ sub parse_ip_layer {
     $tmpl .= 'A' . BIT_IP_SRCADDRESS;
     $tmpl .= 'A' . BIT_IP_DSTADDRESS;
 
-    (   $ip{'ver'},         $ip{'hlen'}, $ip{'tos'},
-        $ip{'len'},         $ip{'id'},   $ip{'flags'},
-        $ip{'frag_offset'}, $ip{'ttl'},  $ip{'proto'},
-        $ip{'checksum'},    $ip{'src'},  $ip{'dst'}
+    (   $ip{'ver'},   $ip{'hlen'},     $ip{'tos'},         $ip{'len'},
+        $ip{'id'},    $ip{'flags'},    $ip{'frag_offset'}, $ip{'ttl'},
+        $ip{'proto'}, $ip{'checksum'}, $ip{'src'},         $ip{'dst'}
     ) = map { eval "0b$_" } unpack $tmpl, $packet;
 
     return \%ip;
@@ -159,10 +179,8 @@ sub parse_tcp_layer {
     $tmpl .= 'A' . BIT_TCP_CHECKSUM;
     $tmpl .= 'A' . BIT_TCP_UPOINTER;
 
-    (   $tcp{'src_port'}, $tcp{'dst_port'}, $tcp{'seq_num'},
-        $tcp{'ack_num'},  $tcp{'offset'},   $tcp{'reserved'},
-        $tcp{'flags'},    $tcp{'window'},   $tcp{'checksum'},
-        $tcp{'upointer'}
+    (   $tcp{'src_port'}, $tcp{'dst_port'}, $tcp{'seq_num'}, $tcp{'ack_num'},  $tcp{'offset'},
+        $tcp{'reserved'}, $tcp{'flags'},    $tcp{'window'},  $tcp{'checksum'}, $tcp{'upointer'}
     ) = map { eval "0b$_" } unpack $tmpl, $packet;
 
     return \%tcp;
