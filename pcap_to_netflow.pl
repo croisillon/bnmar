@@ -14,7 +14,8 @@ use Getopt::Long 'HelpMessage';
 STDOUT->autoflush(1);
 local $ENV{TZ} = 'UTC-2';
 
-my ( $PCAP_IN, $PCAP_OUT, $PCAP_OUT_TMP, $VERBOSE, $FILTER, @NET );
+my ( $PCAP_IN, $PCAP_OUT, $PCAP_OUT_TMP );
+my ( $VERBOSE, $FILTER, @NET, $WITH_HEADER );
 
 GetOptions(
     'file=s'    => \$PCAP_IN,
@@ -22,6 +23,7 @@ GetOptions(
     'verbose'   => \$VERBOSE,
     'filter=s'  => \$FILTER,
     'net=s{,}', => \@NET,
+    'header'    => \$WITH_HEADER,
     'help'      => sub { HelpMessage(0) }
 ) or HelpMessage(1);
 
@@ -55,7 +57,7 @@ close $tb;
 $PCAP_OUT_TMP = "$PCAP_OUT" . TEMP_EXT;
 open my $output, '>', $PCAP_OUT_TMP or die $!;
 $output->autoflush(1);
-file_output_header($output);
+file_output_header($output) if $WITH_HEADER;
 
 # OUTPUT FILE ----
 
@@ -238,12 +240,12 @@ sub file_output_line {
         [ '%-7s',  _durat( $subflow->{'time'} ) ],            # 2
         [ '%-5s',  $flow->{'proto'} ],                        # 3
         [ '%-21s', _addr_port( @{ $subflow->{'src'} } ) ],    # 4
-        [ '%2s',  '->' ],                                     # 5
+        [ '%2s',   '->' ],                                    # 5
         [ '%-21s', _addr_port( @{ $subflow->{'dst'} } ) ],    # 6
-        [ '%6s',  $flow->{'flags'} ],                         # 7
-        [ '%3d',  $flow->{'tos'} ],                           # 8
-        [ '%7d',  $subflow->{'packets'} ],                    # 9
-        [ '%d',   $subflow->{'bytes'} ]                       # 10
+        [ '%6s',   $flow->{'flags'} ],                        # 7
+        [ '%3d',   $flow->{'tos'} ],                          # 8
+        [ '%7d',   $subflow->{'packets'} ],                   # 9
+        [ '%d',    $subflow->{'bytes'} ]                      # 10
     );
 
     my $format = [];
@@ -434,6 +436,8 @@ sub clear_flow {
 
     my $keys_path = get_path(@direct);
 
+    return unless $keys_path->{'key'};
+
     $store{ $keys_path->{'key'} } = undef;
 
     delete_path(@direct);
@@ -584,6 +588,7 @@ Version 0.01
   --filter      Файл с IP-адресами для исключения (по умолчанию: dns/digits.txt)
   --net         IP-адрес и маска локальной сети для исключения (по умолчанию: 192.168.0.0, 255.255.0.0)
 
+  --header      Добавить заголовки к колонкам
   --verbose     Подробный вывод
   --help        Показать эту справку и выйти
 =cut
