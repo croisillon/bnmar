@@ -81,7 +81,7 @@ if ( @keys > 1 ) {
 # counter_bots - сумма всех записей с ботом
 
 
-if ( $cluster_id ) {
+if ( defined $cluster_id ) {
     open $fh, '>', $out or die $!;
 
     $result{'cluster_id'}    = $cluster_id;
