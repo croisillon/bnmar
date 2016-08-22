@@ -84,7 +84,7 @@ while ( $packet = Net::Pcap::pcap_next( $pcap, \%header ) ) {
     # Адреса находятся в локальносй сети
     next if ( $src && $dst );
 
-    # If the request does not belong to any study network
+    # Оба адреса внешние
     next if ( !$src && !$dst );
 
     # LAN FILTERING ----
@@ -287,6 +287,10 @@ sub _dt {
 }
 
 sub _durat {
+    if ( @{$_[0]} == 1 ) {
+        return sprintf('%0.3f', $_[0]->[-1] - $_[0]->[0]);
+    }
+
     my $result = sprintf( '%d.%06d', split /\./, $_[0]->[-1] )
         - sprintf( '%d.%06d', split /\./, $_[0]->[0] );
     $result =~ s/(\d+\.\d{3}).+/$1/;
@@ -514,6 +518,8 @@ sub delete_path {
 sub is_ipv4_packet { shift->{'eth'}->{'type'} == ETH_TYPE_IP }
 
 sub is_tcp_proto { shift->{'ip'}->{'proto'} == IP_PROTO_TCP }
+
+sub is_udp_proto { shift->{'ip'}->{'proto'} == IP_PROTO_UDP }
 
 sub check_flag { ( $_[0] & $_[1] ) == $_[1] }
 
