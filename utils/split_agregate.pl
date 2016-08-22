@@ -13,8 +13,8 @@ my ( $file, $dir, $column, $clean, $acolumn );
 GetOptions(
     'file=s'    => \$file,
     'dir=s'     => \$dir,
-    'column=i'  => \$column,
-    'acolumn=i' => \$acolumn,
+    'column=i'  => \$column,    # cluster column
+    'acolumn=i' => \$acolumn,   # keys column {usually: src[2], whois[10]}
     'help'      => sub { HelpMessage(0) }
 ) or HelpMessage(1);
 
