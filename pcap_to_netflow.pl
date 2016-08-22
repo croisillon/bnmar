@@ -380,6 +380,9 @@ const OUT_FLOW - направление потока от Узла в Интер
 sub create_flow {
     my (@direct) = @_;
 
+    my $flow = find_flow(@direct);
+    save_flow($flow) if $flow;
+
     my $key       = _unique_key(@direct);
     my $keys_path = undef;
 
