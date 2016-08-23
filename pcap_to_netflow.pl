@@ -143,30 +143,15 @@ while ( $packet = Net::Pcap::pcap_next( $pcap, \%header ) ) {
     elsif ( check_flag( $flags, TCP_FLAG_FIN + TCP_FLAG_ACK ) ) {
 
         # https://tools.ietf.org/html/rfc793#page-39
-        $flow->{'_fin_'} = 1 if !$flow->{'_fin_'};
-        $flow->{'_fin_'} = 2 if $flow->{'_fin_'};
-
         calc_flow($pack);
+
+        _verbose( 'Flow %s has been [complited]', _flow_name($flow) );
+        save_flow($flow);
     }
     elsif ( check_flag( $flags, TCP_FLAG_ACK ) ) {
 
         # https://tools.ietf.org/html/rfc793#page-39
-        if ( $flow->{'_fin_'} ) {
-            $flow->{'_ack_'} += 1;
-            calc_flow($pack);
-        }
-        else {
-            calc_flow($pack);
-        }
-
-        if ( $flow->{'_ack_'} == 2 ) {
-            $flags = $flow->{'_syn_'} + $flow->{'_fin_'} + $flow->{'_ack_'};
-
-            if ( $flags == 6 ) {
-                _verbose( 'Flow %s has been [complited]', _flow_name($flow) );
-                save_flow($flow);
-            }
-        }
+        calc_flow($pack);
     }
 
 }    # .while
@@ -338,8 +323,6 @@ sub init_flow {
     my $flow = shift;
 
     $flow->{'_syn_'} = 0;
-    $flow->{'_fin_'} = 0;
-    $flow->{'_ack_'} = 0;
 
     $flow->{'flags'} = '......';
 
