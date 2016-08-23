@@ -159,8 +159,14 @@ sub fragmentation {
 
         $data{'ppf'} = $str->{'packets'};
         $data{'bpp'} = sprintf( "%.2f", $data{'bytes'} / $data{'ppf'} );
-        $data{'pps'} = sprintf( "%.2f", $data{'ppf'} / $data{'duration'} );
-        $data{'bps'} = sprintf( "%.2f", $data{'bytes'} / $data{'duration'} );
+        
+        if ( $data{'duration'} > 0 ) {
+        	$data{'pps'} = sprintf( "%.2f", $data{'ppf'} / $data{'duration'} );
+        	$data{'bps'} = sprintf( "%.2f", $data{'bytes'} / $data{'duration'} );
+    	} else {
+    		$data{'pps'} = sprintf( "%.2f", 0);
+    		$data{'bps'} = sprintf( "%.2f", 0);
+    	}
 
         delete $data{$_} for (qw/bytes duration/);
 
