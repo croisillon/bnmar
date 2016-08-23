@@ -26,9 +26,16 @@ sub_xmeans <- function ( input_dir, output_dir, file_name ) {
 	msg <- paste( "Running XMeans algorithm for file: ", file_name, sep='' )
 	print(msg)
 
+	coords_dir <- file.path(output_dir, 'coords')
+
 	dir.create( output_dir, showWarnings=FALSE, recursive=TRUE,  mode='755' )
+	dir.create( coords_dir, showWarnings=FALSE, recursive=TRUE,  mode='755' )
+
 	input_file_name <- file.path( input_dir, file_name )
 	output_file_name <- file.path( output_dir, file_name )
+
+	file_name <- gsub("csv", "txt", file_name)
+	coords_file_name <- file.path( coords_dir, file_name )
 
 	table <- sub_read_csv( input_file_name )
 
@@ -38,8 +45,11 @@ sub_xmeans <- function ( input_dir, output_dir, file_name ) {
 
 	xmtable <- data.frame(src=table$src_ip, dst=table$dst_ip, port=table$dst_port, fph=table$fph, ppf=table$ppf, bpp=table$bpp, bps=table$bps, cluster_id=xmclust$class_ids)
 
+	sink(coords_file_name, append=FALSE, split=FALSE)
+	print(xmclust$clusterer)
+	sink();
+
 	write.table(xmtable, file = output_file_name, sep = ";", col.names = NA, qmethod = "double")
-	# write.table(summary, file = "xmeans_summary.csv", sep = ";", col.names = NA, qmethod = "double")
 
 	rm(table, xmdf, xmclust, xmtable)
 }
