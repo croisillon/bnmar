@@ -6,20 +6,22 @@ use feature ':5.10';
 use Getopt::Long 'HelpMessage';
 use Data::Dumper;
 
-my ( $file, $pattern, $out );
+my ( $file, $pattern, $out, $column );
 
+$column = 8;
 GetOptions( 
     'file=s' => \$file,
     'out=s' => \$out,
+    'column=s' => \$column,
+    'pattern=s' => \$pattern,
 ) or HelpMessage(1);
 
 die "$0 requires the input filename argument (--file)\n" unless $file;
-die "$0 requires the output filename argument (--out)\n" unless $out;
+die "$0 requires the input output argument (--out)\n" unless $out;
+die "$0 requires the input pattern argument (--pattern) example: --pattern 192.168.1.5:7754 \n" unless $pattern;
 
-my $PATTERN = {
-    'PORT' => 1731,
-    'DST'  => "195.54.14.121"
-};
+my $tmp = {};
+($tmp->{'DST'}, $tmp->{'PORT'}) = split ':', $pattern;
 
 my ( $line, $max, $cluster_id, $header, $fh );
 my ( %clusters, %counters, %compromise, @keys, %result, %metrics );
@@ -34,13 +36,13 @@ while ( $line = <$fh> ) {
     $counters{'lines'}++;
     $line = &parse_csv_line($line);
 
-    # 2 - dst, 3 - port, 8 - cluster_id
-    $clusters{ $line->[8] }->{'elements'}++;
-    $clusters{ $line->[8] }->{'bot'} ||= 0;
+    # 2 - dst, 3 - port, $column - cluster_id
+    $clusters{ $line->[$column] }->{'elements'}++;
+    $clusters{ $line->[$column] }->{'bot'} ||= 0;
 
-    if ( $PATTERN->{'PORT'} == $line->[3] && $PATTERN->{'DST'} eq $line->[2] )
+    if ( $tmp->{'PORT'} == $line->[3] && $tmp->{'DST'} eq $line->[2] )
     {
-        $clusters{ $line->[8] }->{'bot'}++;
+        $clusters{ $line->[$column] }->{'bot'}++;
         $counters{'bot'}++;
     }
 }
