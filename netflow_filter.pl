@@ -8,8 +8,7 @@ use File::Spec::Functions;
 use POSIX qw/strftime/;
 use Getopt::Long 'HelpMessage';
 
-my ($FILE);
-my $DIR = 'netflow_filter_result';
+my ($FILE, $DIR);
 my @NET = ( '147.32.80.0', '255.255.240.0' );
 
 GetOptions(
@@ -157,3 +156,67 @@ sub save_data {
         delete $BUFFER{$addr};
     }
 }
+
+
+__END__
+
+=pod
+
+=encoding utf8
+
+=head1 NAME
+
+Агрегирует входящие и исходящие потоки в один общий поток
+
+=head1 VERSION
+
+Version 0.01
+
+=head1 SYNOPSIS
+
+ netflow_filter.pl [КЛЮЧИ]
+
+ -f, --file        Входной файл
+ -d, --dir         Директория для записи файлов
+ -n, --net         IP-адрес и маска домашней сети через запятую (по умолчанию: 147.32.80.0, 255.255.240.0)
+
+     --help        Показать эту справку и выйти
+
+=head2 Примеры
+
+    Для обработки файла:
+    netflow_filter.pl --file capture.netflow.txt --dir results/
+    netflow_filter.pl --file capture.netflow.txt --dir results/ --net 192.168.0.0, 255.255.0.0
+
+    Для обработки вывода через PIPE:
+    nfdump /nfdump/data/2016/01 -o extended | netflow_filter.pl --dir results/
+    nfdump /nfdump/data/2016/01 -o extended | netflow_filter.pl --dir results/ --net 192.168.0.0, 255.255.0.0
+
+=item # cat capture.netflow.txt
+
+    Date flow start         Durat   Prot    Src IP Addr:Port        Dst IP Addr:Port    Flags   Tos     Packets Bytes
+    ...
+    2011-08-15 12:17:36.026 0.000   TCP     147.32.84.165:1037  ->  86.65.39.15:6667    PA_     0       1       84
+    2011-08-15 12:19:25.079 0.000   TCP     86.65.39.15:6667    ->  147.32.84.165:1037  PA_     0       1       108
+    2011-08-15 12:19:25.248 0.000   TCP     147.32.84.165:1037  ->  86.65.39.15:6667    A_      0       1       60
+    2011-08-15 12:20:12.022 0.038   TCP     86.65.39.15:6667    ->  147.32.84.165:1037  PA_     0       2       144
+    2011-08-15 12:20:12.023 0.000   TCP     147.32.84.165:1037  ->  86.65.39.15:6667    PA_     0       1       84
+    ...
+
+=back
+
+=item # netflow_filter.pl --file capture.netflow.txt --dir results/
+
+=back
+
+=item # cat results/147.32.84.165.txt
+
+    2011-08-15 12:20:12.022 0.038   TCP     147.32.84.165:1037    ->  86.65.39.15:6667  PA_     0       6       948
+
+=back
+
+=head1 AUTHOR
+
+Denis Lavrov (C<diolavr@gmail.com>)
+
+=cut
