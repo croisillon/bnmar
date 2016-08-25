@@ -7,9 +7,10 @@ use Socket qw/inet_aton/;
 use File::Spec::Functions;
 use POSIX qw/strftime/;
 use Getopt::Long 'HelpMessage';
+use Data::Dumper;
 
 my ($FILE, $DIR);
-my @NET = ( '147.32.80.0', '255.255.240.0' );
+my @NET;
 
 GetOptions(
     'file=s'    => \$FILE,
@@ -18,8 +19,13 @@ GetOptions(
     'help'      => sub { HelpMessage(0) }
 ) or HelpMessage(1);
 
+chop $NET[0] if @NET == 2;
+
+@NET = ( '147.32.80.0', '255.255.240.0' ) if @NET < 2;
+
 my $NET_ADDR = _aton( $NET[0] );
 my $NET_MASK = _aton( $NET[1] );
+
 
 # 0 - Date first seen
 # 1 - Time
@@ -49,12 +55,21 @@ if ($FILE) {
 else {
     _loop($_) while <>;
 }
-say sprintf( '[%s] Parsing has been complited', strftime( "%H:%M:%S", localtime ) );
+say sprintf( '[%s] Parsing has been completed', strftime( "%H:%M:%S", localtime ) );
+
+my @keys = keys %BUFFER;
+for (@keys) {
+	if ($BUFFER{$_}->{'inited'}) {
+		$BUFFER{$_} = {};
+		next;
+	}
+	save_data($BUFFER{$_});
+}
 %BUFFER = ();
 
 sub _loop {
     my ($line) = @_;
-
+    
     return unless $line;
 
     # If string doesn't contain first 4 digits
@@ -89,28 +104,36 @@ sub parse_string {
     return \%hash;
 }
 
+sub _key {
+    return join '_', @{$_[0]}{qw/src dst/} if _is_lan( $_[0]->{'srcip'} );
+    return join '_', @{$_[0]}{qw/dst src/} if _is_lan( $_[0]->{'dstip'} );
+    return undef;
+}
+
 sub calc_data {
     my ($data) = @_;
+    
+    my $key = _key($data);
 
-    my $addr = _who_from_lan($data);
+    return undef unless $key;
 
-    return undef unless $addr;
-
-    if ( ref $BUFFER{$addr} eq 'HASH' && %{ $BUFFER{$addr} } ) {
+    if ( ref $BUFFER{$key} eq 'HASH' && %{ $BUFFER{$key} } ) {
 
         for (qw/dur packets bytes/) {
-            $BUFFER{$addr}->{$_} += $data->{$_};
+            $BUFFER{$key}->{$_} += $data->{$_};
         }
+        delete $BUFFER{$key}->{'inited'};
     }
     else {
 
         for (qw/dur packets bytes/) {
-            $BUFFER{$addr}->{$_} = $data->{$_};
+            $BUFFER{$key}->{$_} = $data->{$_};
         }
 
         for (qw/date time proto src dst flags tos/) {
-            $BUFFER{$addr}->{$_} = $data->{$_};
+            $BUFFER{$key}->{$_} = $data->{$_};
         }
+        $BUFFER{$key}->{'inited'} = 1;
     }
 
     return;
@@ -129,13 +152,16 @@ sub _who_from_lan {
 sub save_data {
     my ($data) = @_;
 
+    my $key = _key($data);
     my $addr = _who_from_lan($data);
 
-    if ($addr) {
+    if ($key) {
 
-        return unless $BUFFER{$addr};
+        return unless $BUFFER{$key};
 
-        $data = $BUFFER{$addr};
+        $data = $BUFFER{$key};
+
+        return if defined $data->{'inited'};
 
         unless ( _is_lan( [ split ':', $data->{'src'} ]->[0] ) ) {
             ( $data->{'src'}, $data->{'dst'} ) = ( $data->{'dst'}, $data->{'src'} );
@@ -146,14 +172,15 @@ sub save_data {
         my $file = [ split ':', $addr ]->[0];
         my $filename = catfile( $DIR, "$file.txt" );
 
-        my $format = "%s %s\t%s\t%s %s\t%s\t%s\t%s\t%s\t%s\t%s\n";
+        my $format = "%s %s\t%.3f\t%s %s\t%s\t%s\t%s\t%s\t%s\t%s\n";
 
         open my $fh, '>>', $filename or die $!;
         print $fh sprintf( $format, @{$data}{@COLUMNS_NAME} );
         close $fh;
 
-        $BUFFER{$addr} = {};
-        delete $BUFFER{$addr};
+        $BUFFER{$key} = {};
+        $data = undef;
+        delete $BUFFER{$key};
     }
 }
 
