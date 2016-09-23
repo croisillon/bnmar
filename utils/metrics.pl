@@ -4,9 +4,10 @@ use strict;
 use warnings;
 use feature ':5.10';
 use Getopt::Long 'HelpMessage';
+use File::Spec::Functions qw(catfile splitpath);
 use Data::Dumper;
 
-my ( $file, $pattern, $out, $column );
+my ( $file, $pattern, $out, $column, $common_file );
 
 $column = 8;
 GetOptions(
@@ -14,6 +15,7 @@ GetOptions(
     'out=s' => \$out,
     'column=s' => \$column,
     'pattern=s' => \$pattern,
+    'common=s' => \$common_file
 ) or HelpMessage(1);
 
 die "$0 requires the input filename argument (--file)\n" unless $file;
@@ -118,8 +120,20 @@ if ( defined $cluster_id ) {
         $metrics{'FP'}, $metrics{'FN'} );
     say $fh sprintf( "Precision: %.4f\tRecall: %.4f\t\nF-measure: %.4f",
         $metrics{'precision'}, $metrics{'recall'}, $metrics{'f_measure'} );
-
+    
     close $fh;
+
+
+    if ( $common_file ) {
+        open my $common_fh, '>>', $common_file or die $!;
+        my ($interval, $cluster_01) = [splitpath($out)]->[-1] =~ m/int(\d+)\.(\d+)\-clust.+/;
+
+        say $common_fh q{Interval;01_cluster;02_cluster;Precision;Recall;F-measure} if -z $common_file;
+
+        say $common_fh sprintf("%d;%d;%d;%.4f;%.4f;%.4f", $interval, $cluster_01, $result{'cluster_id'}, $metrics{'precision'}, $metrics{'recall'}, $metrics{'f_measure'});
+
+        close $common_fh;
+    }
 }
 
 sub parse_csv_line {
