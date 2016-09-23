@@ -3,10 +3,10 @@ rm(list=ls())
 args<-commandArgs(TRUE)
 
 WORK_DIR <- args[1]
-INPUT_DIR <- 'binned'
+INPUT_DIR <- 'binning'
 OUTPUT_DIR <- '01_clustering'
 
-INTERVALS <- c( 2 )
+INTERVALS <- c( 2, 4, 6, 8, 10 )
 # , 'dbscan', 'em'
 ALGORITHMS <- c( 'xmeans' )
 
@@ -29,7 +29,7 @@ for ( alg in ALGORITHMS ) {
 	for ( interval in INTERVALS ) {
 
 		file_name <- paste( 'int', interval, '.csv', sep='' )
-		output_dir <- file.path( OUTPUT_DIR, alg )
+		output_dir <- file.path( OUTPUT_DIR )
 
 		SUBS[[ alg ]]( INPUT_DIR, output_dir, file_name )
 	}
