@@ -9,7 +9,7 @@ use POSIX qw/strftime/;
 use Getopt::Long 'HelpMessage';
 use Data::Dumper;
 
-my ($FILE, $DIR);
+my ( $FILE, $DIR );
 my @NET;
 
 GetOptions(
@@ -25,7 +25,6 @@ chop $NET[0] if @NET == 2;
 
 my $NET_ADDR = _aton( $NET[0] );
 my $NET_MASK = _aton( $NET[1] );
-
 
 # 0 - Date first seen
 # 1 - Time
@@ -59,17 +58,17 @@ say sprintf( '[%s] Parsing has been completed', strftime( "%H:%M:%S", localtime 
 
 my @keys = keys %BUFFER;
 for (@keys) {
-	if ($BUFFER{$_}->{'inited'}) {
-		$BUFFER{$_} = {};
-		next;
-	}
-	save_data($BUFFER{$_});
+    if ( $BUFFER{$_}->{'inited'} ) {
+        $BUFFER{$_} = {};
+        next;
+    }
+    save_data( $BUFFER{$_} );
 }
 %BUFFER = ();
 
 sub _loop {
     my ($line) = @_;
-    
+
     return unless $line;
 
     # If string doesn't contain first 4 digits
@@ -82,7 +81,8 @@ sub _loop {
 
     calc_data($data);
 
-    if ( $data->{'flags'} =~ m/F/ ) {
+    my $f = $data->{'flags'};
+    if ( ( $f =~ m/F/ && $f =~ m/S/ ) || $f =~ m/F/ ) {
         save_data($data);
     }
 }
@@ -105,14 +105,14 @@ sub parse_string {
 }
 
 sub _key {
-    return join '_', @{$_[0]}{qw/src dst/} if _is_lan( $_[0]->{'srcip'} );
-    return join '_', @{$_[0]}{qw/dst src/} if _is_lan( $_[0]->{'dstip'} );
+    return join '_', @{ $_[0] }{qw/src dst/} if _is_lan( $_[0]->{'srcip'} );
+    return join '_', @{ $_[0] }{qw/dst src/} if _is_lan( $_[0]->{'dstip'} );
     return undef;
 }
 
 sub calc_data {
     my ($data) = @_;
-    
+
     my $key = _key($data);
 
     return undef unless $key;
@@ -152,7 +152,7 @@ sub _who_from_lan {
 sub save_data {
     my ($data) = @_;
 
-    my $key = _key($data);
+    my $key  = _key($data);
     my $addr = _who_from_lan($data);
 
     if ($key) {
@@ -183,7 +183,6 @@ sub save_data {
         delete $BUFFER{$key};
     }
 }
-
 
 __END__
 
