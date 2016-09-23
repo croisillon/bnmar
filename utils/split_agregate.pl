@@ -10,6 +10,8 @@ use Data::Dumper;
 
 my ( $file, $dir, $column, $clean, $acolumn );
 
+$column = 8;
+$acolumn = 2;
 GetOptions(
     'file=s'    => \$file,
     'dir=s'     => \$dir,
@@ -68,7 +70,7 @@ my @clust = keys %voc;
 my ( $sum, @keys, $freq, $clust, $command );
 for $i (@clust) {
 
-    @keys = keys $voc{$i};
+    @keys = keys %{$voc{$i}};
 
     $sum = 0;
     for (@keys) {
