@@ -9,7 +9,7 @@ use Data::Dumper;
 my ( $file, $pattern, $out, $column );
 
 $column = 8;
-GetOptions( 
+GetOptions(
     'file=s' => \$file,
     'out=s' => \$out,
     'column=s' => \$column,
@@ -81,7 +81,6 @@ if ( @keys > 1 ) {
 # bot - суммарное кол-во записей с ботом
 # counter_lines - сумма всех записей
 # counter_bots - сумма всех записей с ботом
-
 
 if ( defined $cluster_id ) {
     open $fh, '>', $out or die $!;
