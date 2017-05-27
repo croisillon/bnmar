@@ -16,6 +16,10 @@ use NetPacket;
 use NetPacket::Ethernet;
 use NetPacket::IP;
 use NetPacket::TCP;
+
+use Digest::MD5 qw/md5_hex/;
+use Algorithm::Diff qw(sdiff);
+
 use Data::Dumper;
 
 GetOptions(
@@ -31,6 +35,9 @@ die "$0 --srcip must have ip-address format"
     unless $src_ip =~ m/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/;
 die "$0 --dstip must have ip-address format"
     unless $dst_ip =~ m/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/;
+
+my $SIMILARITY  = 0.75;
+my $MIN_LCS_LEN = 6;
 
 STDOUT->autoflush(1);
 
@@ -74,11 +81,12 @@ while ( $packet = Net::Pcap::pcap_next( $pcap, \%header ) ) {
     if ( ( $flags & TCP_FLAG_SYN ) != 0 ) {
         if ( defined $storage{$key}->{'handshake'} ) {
             if ( ( $flags & TCP_FLAG_ACK ) != 0 ) {
-            	if ( defined $storage{$key}->{'established'} ) {
-            		die "$0 caught SYN,ACK-flags after handshake";
-        		} else {
-            		$storage{$key}->{'handshake'}++;
-        		}
+                if ( defined $storage{$key}->{'established'} ) {
+                    die "$0 caught SYN,ACK-flags after handshake";
+                }
+                else {
+                    $storage{$key}->{'handshake'}++;
+                }
             }
         }
         else {
@@ -90,8 +98,12 @@ while ( $packet = Net::Pcap::pcap_next( $pcap, \%header ) ) {
     if ( ( $flags & TCP_FLAG_ACK ) != 0 ) {
         if ( defined $storage{$key}->{'established'} ) {
             if ( length($packet_data) ) {
-                push @{ $storage{$key}->{'queries'} },
-                    { $direction => $packet_data };
+                $storage{$key}->{'queries'}->{$direction} = {
+                    'data'   => $packet_data,
+                    'source' => [ split '', unpack 'H*', $packet ]
+                };
+
+                $direction = undef;
             }
         }
         else {
@@ -106,17 +118,139 @@ while ( $packet = Net::Pcap::pcap_next( $pcap, \%header ) ) {
     undef %netpacket;
 }
 
-# Наибольшая длина последовательности
-# use LCS;
-# my $lcs = LCS->LCS( [split '', "thisisatest"], [split '', "testing123testing"] );
-# say lcs("thisisatest", "testing123testing");
+my @storages_keys = sort keys %storage;
+my $first_package = shift @storages_keys;
 
+say $first_package;
 
-# Наибольшая длина подстроки
-# use String::LCSS_XS qw(lcss lcss_all);
-# my $longest = lcss( "thisisatest", "testing123testing" );
-# print $longest, "\n";
+# Отбираем только стабильные подключения и там где определен тип запроса request
+my @established;
+for (@storages_keys) {
+    if ( $storage{$_}->{'established'}
+        && defined $storage{$_}->{'queries'}->{'request'} )
+    {
+        # Изменять строку ниже
+        push @established, $storage{$_}->{'queries'}->{'request'}->{'data'};
+    }
+}
 
+# # ---- BELOW IS PROCESSING OF SIGNATURE -----
 
+sub get_unique_signatures {
+    my %signatures;
 
-# say Dumper \%storage;
+    $signatures{ md5_hex($_) } = $_ for @{ shift @_ };
+
+    return [ values %signatures ];
+}
+
+sub sort_ascending {
+    return [ sort { $a cmp $b } @{ shift @_ } ];
+}
+
+sub longest_common_subsequence {
+    my @sings = @_;
+
+    $_ = [ split '', $_ ] for @sings;
+
+    my @sdiff = sdiff(@sings);
+
+    my @letters;
+    for ( my $i = 0; $i < @sdiff; ++$i ) {
+
+        next unless lc $sdiff[$i][0] eq 'u';
+
+        push @letters, $sdiff[$i][1];
+
+    }
+
+    return scalar @letters;
+}
+
+sub signature_similarity {
+
+    # 0 - nothing in common
+    # 1 - similar
+    return ( 2 * $_[0] ) / ( length( $_[1] ) + length( $_[2] ) );
+}
+
+sub merge_signatures {
+    my $sign_1 = [ split '', shift ];
+    my $sign_2 = [ split '', shift ];
+
+    # # Compare strings
+    # # After that they are processed in a loop
+    # # Result: @letters
+    # # ---------------------------------------
+    my @sdiff = sdiff( $sign_1, $sign_2 );
+
+    my @letters;
+    for my $item (@sdiff) {
+
+        if ( lc $item->[0] eq 'u' ) {
+
+            # # u: Element unmodified
+            push @letters, $item->[1];
+        }
+        else {
+            # # -,+,c: are processed here
+            push @letters, "\x01";
+        }
+
+    }
+
+    $sign_1 = join '', @letters;
+    $sign_1 =~ s/\x01{2,}/\x01/g;
+    return $sign_1;
+
+}
+
+my $list = \@established;
+say 'Number of signatures: ' . scalar @$list;
+
+# # Отбираем уникальные сигнатуры
+$list = get_unique_signatures($list);
+say 'Unique signatures: ' . scalar @$list;
+say 'Necessary iterations: ' . scalar @$list - 1;
+say '------------------';
+
+# # Отсортируем сигнатуры
+$list = &sort_ascending($list);
+
+my @signatures_array;
+my $transform_signature = shift @$list;
+my $iteration           = 1;
+
+for my $signature (@$list) {
+    say "> iteration: " . $iteration;
+
+    # # Определим самую большую подстроку
+    my $lcs_length
+        = longest_common_subsequence( $transform_signature, $signature );
+    say 'lcs_length: ' . $lcs_length, ' | limit: ' . $MIN_LCS_LEN;
+
+    # # Определим ранг схожести двух сигнатур
+    my $similarity_rank
+        = signature_similarity( $lcs_length, $transform_signature,
+        $signature );
+    say 'similarity_rank: ' . $similarity_rank, ' | limit: ' . $SIMILARITY;
+
+# # 1. Чтобы не смешать сигнатуры двух ботов будем сравнивать их похожесть
+# # 2. Убираем маленькие общие подстроки, чтобы уменьшить ложные срабатывания
+    if ( $similarity_rank < $SIMILARITY || $lcs_length < $MIN_LCS_LEN ) {
+        push @signatures_array, $transform_signature;
+        $transform_signature = $signature;
+        next;
+    }
+
+    # Объединяем сигнатуры
+    $transform_signature
+        = merge_signatures( $transform_signature, $signature );
+
+    say '------------------';
+    ++$iteration;
+}
+
+push @signatures_array, $transform_signature;
+
+say Dumper \@signatures_array;
