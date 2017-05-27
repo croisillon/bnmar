@@ -5,8 +5,9 @@ args<-commandArgs(TRUE)
 source('R/functions.r')
 
 require(RWeka)
-
-INSTALLED_XMEANS = 0
+WPM("refresh-cache")
+WPM("install-package", "XMeans")
+WPM("load-package", "XMeans")
 
 WORK_DIR <- args[1]
 INPUT_DIR <- '01_split'
@@ -16,12 +17,6 @@ INPUT_DIR <- file.path( WORK_DIR, INPUT_DIR );
 OUTPUT_DIR <- file.path( WORK_DIR, OUTPUT_DIR );
 
 sub_xmeans <- function ( input_dir, output_dir, file_name ) {
-
-	if ( !INSTALLED_XMEANS && require('RWeka') ) {
-		print('Running XMeans installing. This operation can take several minutes...')
-		WPM("install-package", "XMeans")
-		INSTALLED_XMEANS <<- 1;
-	}
 
 	msg <- paste( "Running XMeans algorithm for file: ", file_name, sep='' )
 	print(msg)

@@ -149,33 +149,5 @@ unless ( $skip ) {
 	--$skip;
 }
 
-##### ---------- STEP 8 ---------- #####
-$step_name = '08 - Splitting';
-$script = 'utils/metrics.pl';
-$script = catfile($Bin, $script);
-$catalog = '02_metrics';
-$input_dir = '02_clustering';
-
-unless ( $skip ) {
-	say $step_name;
-	$catalog = catfile($outdir, $catalog);
-	unless ( -e $catalog ) {
-		mkdir($catalog) or die $!;
-	}
-
-	my @files = glob(catfile($outdir, $input_dir, 'int*.csv'));
-	my $common = catfile($catalog, 'metric.csv');
-	unlink($common) if -e $common;
-
-	for my $file ( @files ) {
-		$out = catfile($catalog, [splitpath($file)]->[-1]);
-		$command = qq{$script --file $file --out $out --column 8 --pattern 195.54.14.121:1731 --common $common};
-		say $command;
-		system $command;
-	}
-} else {
-	_skipped $step_name;
-	--$skip;
-}
 
 say 'Done!';

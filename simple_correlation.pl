@@ -21,6 +21,7 @@ die "$0 requires the input output argument (--out)\n" unless $OUT;
 
 my ( %data, @cols, %ips, $file );
 
+# Сперва запустить скрипт без этой опции
 unless ($SUM) {
 
     my @files = glob File::Spec->catdir( $DIR, '*' );

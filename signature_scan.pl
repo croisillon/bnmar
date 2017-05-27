@@ -47,7 +47,10 @@ my $pcap = Net::Pcap::pcap_open_offline( $pcap_in, \$errbuf )
 
 my ( %header, $packet, %netpacket, $key, $direction, %storage );
 while ( $packet = Net::Pcap::pcap_next( $pcap, \%header ) ) {
+    next unless $packet;
     $netpacket{'eth'} = NetPacket::Ethernet->decode($packet);
+
+    next unless $netpacket{'eth'}->{'data'};
     $netpacket{'ip'}  = NetPacket::IP->decode( $netpacket{'eth'}->{'data'} );
 
     # Only IPv4
@@ -55,6 +58,7 @@ while ( $packet = Net::Pcap::pcap_next( $pcap, \%header ) ) {
 
     # Only TCP
     next unless $netpacket{'ip'}->{'proto'} == IP_PROTO_TCP;
+
     $netpacket{'protocol'}
         = NetPacket::TCP->decode( $netpacket{'ip'}->{'data'} );
 
@@ -78,9 +82,9 @@ while ( $packet = Net::Pcap::pcap_next( $pcap, \%header ) ) {
     my $flags       = $netpacket{'protocol'}->{'flags'};
     my $packet_data = $netpacket{'protocol'}->{'data'};
 
-    if ( ( $flags & TCP_FLAG_SYN ) != 0 ) {
+    if ( $flags && ( $flags & TCP_FLAG_SYN ) != 0 ) {
         if ( defined $storage{$key}->{'handshake'} ) {
-            if ( ( $flags & TCP_FLAG_ACK ) != 0 ) {
+            if ( $flags && ( $flags & TCP_FLAG_ACK ) != 0 ) {
                 if ( defined $storage{$key}->{'established'} ) {
                     die "$0 caught SYN,ACK-flags after handshake";
                 }
@@ -95,7 +99,7 @@ while ( $packet = Net::Pcap::pcap_next( $pcap, \%header ) ) {
         next;
     }
 
-    if ( ( $flags & TCP_FLAG_ACK ) != 0 ) {
+    if ( $flags && ( $flags & TCP_FLAG_ACK ) != 0 ) {
         if ( defined $storage{$key}->{'established'} ) {
             if ( length($packet_data) ) {
                 $storage{$key}->{'queries'}->{$direction} = {
@@ -207,6 +211,9 @@ sub merge_signatures {
 
 my $list = \@established;
 say 'Number of signatures: ' . scalar @$list;
+say '--------------------------------------';
+say Dumper \@established;
+say '--------------------------------------';
 
 # # Отбираем уникальные сигнатуры
 $list = get_unique_signatures($list);

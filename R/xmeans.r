@@ -4,7 +4,7 @@
 # install.packages("RWeka", dependencies=TRUE)
 # After this step, restart your R
 
-
+# require(RWeka)
 # WPM("refresh-cache")
 # WPM("install-package", "XMeans")
 # WPM("load-package", "XMeans")
@@ -12,16 +12,11 @@
 source('R/functions.r')
 
 require(RWeka)
-
-INSTALLED_XMEANS = 0
+WPM("refresh-cache")
+WPM("install-package", "XMeans")
+WPM("load-package", "XMeans")
 
 sub_xmeans <- function ( input_dir, output_dir, file_name ) {
-
-	if ( !interactive() && !INSTALLED_XMEANS && require('RWeka') ) {
-		print('Running XMeans installing. This operation can take several minutes...')
-		WPM("install-package", "XMeans")
-		INSTALLED_XMEANS <<- 1;
-	}
 
 	msg <- paste( "Running XMeans algorithm for file: ", file_name, sep='' )
 	print(msg)

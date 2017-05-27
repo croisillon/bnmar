@@ -21,7 +21,7 @@ GetOptions(
     'ip=s{,}'  => \@ips
 ) or HelpMessage(1);
 
-@ips = scalar @ips ? @ips : ('195.54.14.65:53', '195.54.14.65:8080');
+@ips = scalar @ips ? @ips : ();
 
 my (%cache, %ips);
 

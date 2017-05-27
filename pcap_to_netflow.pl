@@ -12,7 +12,7 @@ use feature ':5.10';
 use Getopt::Long 'HelpMessage';
 
 STDOUT->autoflush(1);
-local $ENV{TZ} = 'UTC-2';
+local $ENV{TZ} = 'UTC-0';
 
 my ( $PCAP_IN, $PCAP_OUT, $PCAP_OUT_TMP );
 my ( $VERBOSE, $FILTER, @NET, $WITH_HEADER );
@@ -73,6 +73,8 @@ my ( $flags, $src, $dst, $flow, $direct );
 while ( $packet = Net::Pcap::pcap_next( $pcap, \%header ) ) {
     $pack = &PP::parse_packet( $packet, \%header );
     $flow = $direct = $src = $dst = undef;
+    
+    say sprintf( '%s > NEXT Iteration >', localtime(time)->hms );
 
     # Only IPv4
     next unless is_ipv4_packet($pack);

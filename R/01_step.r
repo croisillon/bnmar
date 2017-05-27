@@ -10,6 +10,7 @@ INTERVALS <- c( 2, 4, 6, 8, 10 )
 # , 'dbscan', 'em'
 ALGORITHMS <- c( 'xmeans' )
 
+
 INPUT_DIR <- file.path( WORK_DIR, INPUT_DIR );
 OUTPUT_DIR <- file.path( WORK_DIR, OUTPUT_DIR );
 
